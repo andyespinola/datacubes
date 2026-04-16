@@ -1,0 +1,2 @@
+canonical_id,rss_path,cube_path,pipe3d_path,snapshot,subhalo_id,view,re_kpc,ifu_design,repeat_count,n_star_part,n_gas_cell
+TNG50-87-141934-0-127,,/home/andy/pythonprojects/cubes/TNG50-87-141934-0-127.cube.fits.gz,,87,141934,0,7.519478797912598,127,1,2434971,55565

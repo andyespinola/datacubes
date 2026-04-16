@@ -1,0 +1,5 @@
+numpy
+astropy
+scipy
+requests
+h5py

@@ -1,0 +1,8 @@
+MaNGIA_TNG upstream repository:
+https://github.com/illustristng/MaNGIA_TNG
+
+Vendored snapshot:
+d859f3e24704f983d0eabfc080daf346a6d7b5da
+
+Primary file used locally:
+official_mangia/sin_ifu_clean.py

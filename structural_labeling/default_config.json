@@ -1,0 +1,33 @@
+{
+  "arm_residual_sigma_px": 2.0,
+  "arm_residual_threshold": 0.15,
+  "bar_min_strength": 0.1,
+  "bar_radius_fraction": 1.0,
+  "bar_soft_edge_fraction": 0.15,
+  "bulge_width_fraction": 0.35,
+  "central_bulge_boost": 0.65,
+  "central_disk_suppression": 0.3,
+  "central_radius_scale": 1.0,
+  "faceon_padding_factor": 1.2,
+  "family_scaling_iters": 20,
+  "fine_grid_size": 256,
+  "gas_arm_boost": 0.25,
+  "hard_label_margin": 0.15,
+  "hard_label_min_prob": 0.5,
+  "hard_label_thresholds": [
+    0.5,
+    0.55,
+    0.6
+  ],
+  "hard_min_component_pixels": 5,
+  "hard_spatial_blend": 0.45,
+  "hard_spatial_sigma_px": 1.0,
+  "max_calibration_iters": 25,
+  "other_width_fraction": 0.2,
+  "projection_smoothing_sigma_px": 1.0,
+  "valid_closing_iterations": 0,
+  "valid_flux_percentile": 35.0,
+  "valid_min_component_pixels": 24,
+  "valid_peak_fraction": 0.02,
+  "valid_smoothing_sigma_px": 1.5
+}

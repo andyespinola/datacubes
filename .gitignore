@@ -1,0 +1,41 @@
+# Entornos locales y caches
+.venv/
+venv/
+.codex
+__pycache__/
+*.py[cod]
+*.log
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Configuracion local y secretos
+.env
+.env.*
+!.env.example
+*.local
+
+# Productos cientificos pesados o generados
+*.fits
+*.fits.gz
+*.h5
+*.hdf5
+*.npz
+*.tar.gz
+*.zip
+
+# El catalogo MaNGIA si debe quedar versionado.
+!/MaNGIA_catalog.fits
+
+# Directorios de datos descargados/generados
+manga_compare_project/data/
+mangia_logcube_74x74/output/
+structural_labeling/cache/
+structural_labeling/outputs/
+deploy_mangia_10k/rss_input/
+deploy_mangia_10k/output/
+
+# Artefactos temporales de sistema/editor
+.DS_Store
+*.swp
+*.swo

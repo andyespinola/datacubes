@@ -1,0 +1,12 @@
+{
+  "default_reference_logcube": "../manga_compare_project/data/manga-7443-12703-LOGCUBE.fits.gz",
+  "flux_unit_scale": 10.0,
+  "spatial_interpolation_order": 1,
+  "mask_interpolation_order": 0,
+  "spectral_interpolation_kind": "linear",
+  "mask_spectral_threshold": 1e-06,
+  "flux_conservation_tolerance": 0.2,
+  "wcs_tolerance": 1e-09,
+  "propagate_gas": true,
+  "flip_x_to_match_manga": true
+}

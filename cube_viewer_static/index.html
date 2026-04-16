@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cube Viewer</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="layout">
+    <section class="panel panel-controls">
+      <div class="hero">
+        <p class="eyebrow">Visualizador Dinamico</p>
+        <h1>Spaxeles y Espectros</h1>
+        <p class="subtitle">
+          Elige un cubo reconstruido, navega sus slices y haz click en un spaxel para ver
+          su informacion espectral completa.
+        </p>
+      </div>
+
+      <label class="field">
+        <span>Cubo FITS</span>
+        <select id="cube-select"></select>
+      </label>
+
+      <div class="slider-block">
+        <div class="slider-head">
+          <span>Slice espectral</span>
+          <strong id="slice-label">-</strong>
+        </div>
+        <input id="slice-slider" type="range" min="0" max="0" step="1" value="0">
+      </div>
+
+      <div class="button-row">
+        <button id="overview-button" class="active" type="button">Mapa Medio</button>
+        <button id="slice-button" type="button">Slice Actual</button>
+      </div>
+
+      <section class="section-block">
+        <div class="panel-head panel-head-compact">
+          <h2>Etiquetas Estructurales</h2>
+          <p id="label-status">Buscando etiquetas...</p>
+        </div>
+
+        <label class="field">
+          <span>Overlay</span>
+          <select id="label-mode-select"></select>
+        </label>
+
+        <label class="field">
+          <span>Clase</span>
+          <select id="label-class-select"></select>
+        </label>
+
+        <div class="slider-block slider-block-compact">
+          <div class="slider-head">
+            <span>Opacidad</span>
+            <strong id="overlay-opacity-value">65%</strong>
+          </div>
+          <input id="overlay-opacity" type="range" min="0" max="100" step="1" value="65">
+        </div>
+
+        <div id="label-summary" class="meta-grid meta-grid-compact"></div>
+      </section>
+
+      <div id="cube-meta" class="meta-grid"></div>
+    </section>
+
+    <section class="panel panel-map">
+      <div class="panel-head">
+        <h2>Mapa 2D</h2>
+        <p id="map-caption">Haz click sobre un spaxel</p>
+      </div>
+      <canvas id="map-canvas" width="640" height="640"></canvas>
+      <div class="legend">
+        <span>Bajo</span>
+        <div class="legend-bar"></div>
+        <span>Alto</span>
+      </div>
+    </section>
+
+    <section class="panel panel-spectrum">
+      <div class="panel-head">
+        <h2>Espectro del Spaxel</h2>
+        <p id="spaxel-caption">Todavia no hay spaxel seleccionado</p>
+      </div>
+
+      <div class="toggle-row">
+        <label><input id="toggle-error" type="checkbox" checked> Error</label>
+        <label><input id="toggle-gas" type="checkbox"> Gas</label>
+        <label><input id="toggle-mask" type="checkbox" checked> Mascara</label>
+      </div>
+
+      <svg id="spectrum-svg" viewBox="0 0 860 420" preserveAspectRatio="none"></svg>
+      <div id="spaxel-meta" class="meta-grid meta-grid-compact"></div>
+      <div class="panel-head panel-head-compact">
+        <h2>Etiquetas del Spaxel</h2>
+        <p>Probabilidades y clase dura en la misma grilla IFU</p>
+      </div>
+      <div id="spaxel-label-meta" class="meta-grid meta-grid-compact"></div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
