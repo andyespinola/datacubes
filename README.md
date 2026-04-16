@@ -67,14 +67,7 @@ Algunos flujos requieren datos que no se suben al repositorio:
 
 Las rutas esperadas y comandos de cada flujo estan documentados en [`GUIA_PROYECTOS_WORKSPACE.md`](GUIA_PROYECTOS_WORKSPACE.md).
 
-## Crear el repositorio privado en GitHub
 
-GitHub Free permite repositorios privados para cuentas personales. Para publicar este workspace como `datacubes`, crear primero un repositorio privado vacio con ese nombre y luego ejecutar:
-
-```bash
-git remote add origin git@github.com:<usuario>/datacubes.git
-git push -u origin main
-```
 
 Si tienes GitHub CLI instalado y autenticado, se puede hacer en una sola secuencia:
 
