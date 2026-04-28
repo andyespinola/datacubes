@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TNG50 | Galaxia Piloto</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">IllustrisTNG / MaNGIA</p>
+          <h1>Visualizador de la galaxia piloto TNG50</h1>
+          <p class="lead">
+            Explorador físico de la galaxia <code>TNG50-87-141934-0-127</code> usando el
+            cutout oficial del subhalo, centrado y rotado a una vista face-on coherente con
+            su momento angular estelar.
+          </p>
+        </div>
+        <div class="hero-meta">
+          <div class="meta-pill" id="hero-redshift">z = ...</div>
+          <div class="meta-pill" id="hero-stellar-mass">M* = ...</div>
+          <div class="meta-pill" id="hero-sfr">SFR = ...</div>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel controls-panel">
+          <div class="panel-header">
+            <h2>Controles</h2>
+            <p id="status-line">Cargando datos del piloto...</p>
+          </div>
+
+          <div class="controls-grid">
+            <label>
+              <span>Componente</span>
+              <select id="component-select"></select>
+            </label>
+            <label>
+              <span>Magnitud</span>
+              <select id="quantity-select"></select>
+            </label>
+            <label>
+              <span>Vista</span>
+              <select id="view-select"></select>
+            </label>
+            <label>
+              <span>Radio mostrado</span>
+              <div class="slider-line">
+                <input id="radius-range" type="range" min="8" max="80" value="35" />
+                <strong id="radius-value">35 kpc</strong>
+              </div>
+            </label>
+          </div>
+
+          <div class="summary-grid" id="summary-grid"></div>
+        </section>
+
+        <section class="panel viz-panel">
+          <div class="viz-header">
+            <div>
+              <h2 id="map-title">Mapa</h2>
+              <p id="map-subtitle">Preparando proyección...</p>
+            </div>
+            <div class="legend-box">
+              <canvas id="colorbar" width="28" height="220"></canvas>
+              <div class="legend-scale">
+                <span id="legend-max">...</span>
+                <span id="legend-mid">...</span>
+                <span id="legend-min">...</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="canvas-frame">
+            <canvas id="heatmap" width="760" height="760"></canvas>
+            <div class="axis-label axis-x" id="axis-x-label">x [kpc]</div>
+            <div class="axis-label axis-y" id="axis-y-label">y [kpc]</div>
+          </div>
+        </section>
+
+        <section class="panel cloud-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Vista 3D de partículas</h2>
+              <p id="cloud-status">Preparando nube tridimensional...</p>
+            </div>
+            <button id="cloud-reset-button" class="ghost-button" type="button">Recentrar 3D</button>
+          </div>
+
+          <div class="cloud-toolbar">
+            <div class="cloud-toggles">
+              <label class="toggle-chip stars-chip">
+                <input id="cloud-stars-toggle" type="checkbox" checked />
+                <span>Estrellas</span>
+              </label>
+              <label class="toggle-chip gas-chip">
+                <input id="cloud-gas-toggle" type="checkbox" checked />
+                <span>Gas</span>
+              </label>
+            </div>
+            <label class="cloud-detail-control">
+              <span>Detalle 3D</span>
+              <select id="cloud-detail-select"></select>
+            </label>
+            <div class="cloud-stats" id="cloud-stats">Cargando muestreo...</div>
+          </div>
+
+          <div class="cloud-frame">
+            <canvas id="cloud-canvas"></canvas>
+            <div class="cloud-overlay">
+              <span>Arrastrá para rotar</span>
+              <span>Rueda para zoom</span>
+            </div>
+            <div class="cloud-legend">
+              <span><i class="legend-dot stars-dot"></i> Estrellas</span>
+              <span><i class="legend-dot gas-dot"></i> Gas</span>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
