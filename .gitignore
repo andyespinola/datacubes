@@ -26,6 +26,8 @@ __pycache__/
 
 # El catalogo MaNGIA si debe quedar versionado.
 !/MaNGIA_catalog.fits
+!/deploy_mangia_10k/MaNGIA_catalog.fits
+!/deploy_mangia_10k/official_mangia/libs/MaStar_CB19.slog_1_5.fits.gz
 
 # Directorios de datos descargados/generados
 manga_compare_project/data/
