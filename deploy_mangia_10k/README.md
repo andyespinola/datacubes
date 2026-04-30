@@ -25,31 +25,130 @@ Puedes dejar los RSS dentro de `./rss_input`, o apuntar `RSS_INPUT_DIR` a otro d
 
 Los cubos reconstruidos se escriben por defecto en `./output`.
 
-## Quick start
+## Configuracion en otra maquina
 
-1. Edita `.env` si quieres usar otro directorio de entrada o salida.
-2. Crea el entorno e instala dependencias:
+### 1. Que necesitas antes de empezar
+
+- Python 3.10 o superior.
+- El repo clonado.
+- Acceso al directorio donde estan los 10000 RSS.
+- Una fuente real para:
+  - `MaNGIA_catalog.fits`
+  - `MaStar_CB19.slog_1_5.fits.gz`
+
+### 2. Crear el archivo `.env`
+
+Usa la plantilla incluida:
+
+```bash
+cp .env.example .env
+```
+
+Ajusta como minimo estas variables:
+
+- `RSS_INPUT_DIR`: carpeta real donde estan los RSS.
+- `OUTPUT_DIR`: carpeta donde quieres escribir los cubos.
+- `LOG_DIR`: carpeta para logs CSV.
+- `CATALOG_SOURCE_PATH` o `CATALOG_URL`: fuente de `MaNGIA_catalog.fits`.
+- `TEMPLATE_SOURCE_PATH` o `TEMPLATE_URL`: fuente de `MaStar_CB19.slog_1_5.fits.gz`.
+- `BATCH_WORKERS`: cantidad de procesos paralelos.
+
+Ejemplo tipico:
+
+```bash
+RSS_INPUT_DIR=/mnt/datos/mangia/rss_10000
+OUTPUT_DIR=/mnt/datos/mangia/cubos_reconstruidos
+LOG_DIR=/mnt/datos/mangia/logs_reconstruccion
+
+CATALOG_SOURCE_PATH=/mnt/datos/mangia/assets/MaNGIA_catalog.fits
+TEMPLATE_SOURCE_PATH=/mnt/datos/mangia/assets/MaStar_CB19.slog_1_5.fits.gz
+
+BATCH_WORKERS=8
+OMP_NUM_THREADS=1
+OPENBLAS_NUM_THREADS=1
+MKL_NUM_THREADS=1
+NUMEXPR_NUM_THREADS=1
+```
+
+### 3. Bootstrap del entorno
+
+Este paso:
+
+- crea el virtualenv;
+- instala dependencias;
+- copia o descarga los assets criticos dentro del deploy;
+- crea directorios base de salida y logs.
+
+Comando:
 
 ```bash
 bash scripts/bootstrap.sh
 ```
 
-3. Lanza reconstruccion batch:
+Si todo sale bien, al final deberian existir:
+
+- `./MaNGIA_catalog.fits`
+- `./official_mangia/libs/MaStar_CB19.slog_1_5.fits.gz`
+
+### 4. Validacion minima antes de lanzar los 10000
+
+Primero conviene correr una prueba chica:
+
+```bash
+bash scripts/run_batch.sh --count 2 --workers 1
+```
+
+Revisa que aparezcan salidas como:
+
+- `<prefijo>.cube.fits.gz`
+- `<prefijo>.cube_val.fits.gz`
+
+y que en `logs/` o en `LOG_DIR` se haya creado un CSV con estados `ok`.
+
+### 5. Corrida completa
+
+Una vez validado el paso anterior:
 
 ```bash
 bash scripts/run_batch.sh
 ```
 
-4. Lanza el visor web:
+Si quieres repartir el trabajo entre varios jobs:
+
+```bash
+bash scripts/run_batch.sh --start-index 0 --count 2500
+bash scripts/run_batch.sh --start-index 2500 --count 2500
+bash scripts/run_batch.sh --start-index 5000 --count 2500
+bash scripts/run_batch.sh --start-index 7500 --count 2500
+```
+
+### 6. Visor local
+
+Para inspeccionar algunos cubos reconstruidos:
 
 ```bash
 bash scripts/run_viewer.sh
+```
+
+Luego abrir `http://127.0.0.1:8000` o el host/puerto configurado en `.env`.
+
+## Quick start
+
+```bash
+cp .env.example .env
+# editar .env
+bash scripts/bootstrap.sh
+bash scripts/run_batch.sh --count 2 --workers 1
+bash scripts/run_batch.sh
 ```
 
 ## Variables clave de .env
 
 - `RSS_INPUT_DIR`: directorio con los RSS.
 - `OUTPUT_DIR`: directorio de cubos reconstruidos.
+- `LOG_DIR`: directorio para logs CSV de ejecucion.
+- `CATALOG_SOURCE_PATH` / `CATALOG_URL`: de donde obtener `MaNGIA_catalog.fits` al bootstrapear una maquina nueva.
+- `TEMPLATE_SOURCE_PATH` / `TEMPLATE_URL`: de donde obtener `MaStar_CB19.slog_1_5.fits.gz`.
 - `BATCH_WORKERS`: procesos paralelos.
 - `START_INDEX`: offset para repartir trabajo en varios jobs.
 - `COUNT`: cuantos RSS procesar desde `START_INDEX`. `0` significa todos.
@@ -100,6 +199,13 @@ Despues del primer deploy, conviene validar con 1 o 2 RSS antes de disparar los 
 ```bash
 bash scripts/run_batch.sh --count 2 --workers 1
 ```
+
+## Fallos comunes
+
+- Si falla el bootstrap por `MaNGIA_catalog.fits`, revisa `CATALOG_SOURCE_PATH` o `CATALOG_URL`.
+- Si falla el bootstrap por `MaStar_CB19.slog_1_5.fits.gz`, revisa `TEMPLATE_SOURCE_PATH` o `TEMPLATE_URL`.
+- Si el batch no encuentra RSS, revisa `RSS_INPUT_DIR` y `RSS_GLOB`.
+- Si la maquina se satura, baja `BATCH_WORKERS` y mantén `OMP_NUM_THREADS=1`.
 
 ## Procedencia del codigo oficial
 

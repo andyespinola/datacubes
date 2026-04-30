@@ -19,6 +19,7 @@ RSS_INPUT_DIR="${RSS_INPUT_DIR:-./rss_input}"
 "$PYTHON_BIN" -m venv "$VENV_DIR"
 "$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel
 "$VENV_DIR/bin/python" -m pip install -r requirements.txt
+"$VENV_DIR/bin/python" scripts/prepare_runtime_assets.py
 
 mkdir -p "$LOG_DIR" "$OUTPUT_DIR" "$RSS_INPUT_DIR"
 
