@@ -4,3 +4,9 @@ scipy
 flask
 requests
 h5py
+speclite
+astroquery
+reproject
+pydantic
+tqdm
+pytest

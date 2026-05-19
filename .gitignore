@@ -36,6 +36,7 @@ structural_labeling/cache/
 structural_labeling/outputs/
 deploy_mangia_10k/rss_input/
 deploy_mangia_10k/output/
+ImagesMangGenerator/data/
 
 # Artefactos temporales de sistema/editor
 .DS_Store
