@@ -153,6 +153,16 @@ Opciones utiles:
 --rgb-order irg    # i->R, r->G, g->B
 ```
 
+Para generar previews PNG de todos los NPZ de una salida:
+
+```bash
+bash ImagesMangGenerator/scripts/render_previews.sh
+```
+
+El script lee `ImagesMangGenerator/.env`. Si `PREVIEW_INPUT_DIR` esta vacio,
+usa `MANGIA_OUTPUT_DIR`; si `PREVIEW_OUTPUT_DIR` esta vacio, escribe en
+`$PREVIEW_INPUT_DIR/previews`.
+
 ## Limitaciones v1
 
 - La integracion con Packer queda fuera de alcance porque no existe aun el
