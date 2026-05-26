@@ -1,0 +1,25 @@
+{
+  "grid_size": 69,
+  "pixel_scale_arcsec": 0.5,
+  "psf_fwhm_arcsec": 1.43,
+  "primary_rcov_reff": 1.5,
+  "secondary_rcov_reff": 2.5,
+  "n_eff_min": 30.0,
+  "entropy_max": 0.75,
+  "max_prob_min": 0.5,
+  "valid_min_component_pixels": 5,
+  "fvalid_min": 0.6,
+  "cglobal_min": 0.6,
+  "bulge_disk_min": 0.7,
+  "main_metric_variant": "Y_lum_psf",
+  "orientation_degrees": [0.0, 45.0, 90.0, 135.0],
+  "label_config": {
+    "fine_grid_size": 256,
+    "faceon_padding_factor": 1.2,
+    "projection_smoothing_sigma_px": 1.0,
+    "arm_residual_sigma_px": 2.0,
+    "arm_residual_threshold": 0.15,
+    "gas_arm_boost": 0.25
+  }
+}
+
