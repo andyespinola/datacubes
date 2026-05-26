@@ -41,6 +41,7 @@ Portable batch options:
 - `--limit N`: process only the first `N` galaxies after deterministic input ordering.
 - `--progress-every N`: print a progress line every `N` completed galaxies. The default is 10.
 - `--manifest manifest.csv`: read cube paths from a `cube_path` column instead of a glob.
+- `--log-file path`: write a detailed run log. The default is `<outdir>/kinematics_run.log`.
 
 Example for a first 100-galaxy batch on another machine:
 
@@ -52,3 +53,8 @@ python kinematic_moments/run_kinematics.py \
   --limit 100 \
   --progress-every 10
 ```
+
+Every run writes two audit files in the output directory:
+
+- `kinematics_manifest.csv`: one row per cube with status, output paths, and summary metrics.
+- `kinematics_run.log`: timestamped run log with input discovery, template path, per-cube start/end, skips, failures, and final summary.

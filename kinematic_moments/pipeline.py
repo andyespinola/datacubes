@@ -4,6 +4,7 @@ import csv
 import traceback
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import asdict
+from datetime import datetime
 from glob import glob
 from pathlib import Path
 from typing import Iterable
@@ -22,6 +23,16 @@ from .io import (
 )
 from .models import KinematicMaps, KinematicMomentsConfig, OfficialCube
 from .ppxf_fit import build_fit_grid, compute_snr, fit_spaxel, load_mastar_templates
+
+
+def append_run_log(log_path: str | Path | None, message: str) -> None:
+    if log_path is None:
+        return
+    path = Path(log_path).expanduser().resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().isoformat(timespec="seconds")
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(f"[{stamp}] {message}\n")
 
 
 def _empty_maps(cube: OfficialCube, config: KinematicMomentsConfig) -> KinematicMaps:
@@ -123,10 +134,16 @@ def process_cube(
     max_spaxels: int | None = None,
     overwrite: bool = False,
     show_progress: bool = True,
+    log_path: str | Path | None = None,
 ) -> dict[str, object]:
     cube_path = Path(cube_path).expanduser().resolve()
     npz_path, fits_path = output_paths(cube_path, output_dir)
+    append_run_log(log_path, f"START cube={cube_path}")
     if not overwrite and npz_path.exists() and fits_path.exists():
+        append_run_log(
+            log_path,
+            f"SKIP cube={cube_path} reason='outputs already exist' npz={npz_path} fits={fits_path}",
+        )
         return {
             "cube_path": str(cube_path),
             "status": "skipped",
@@ -148,6 +165,14 @@ def process_cube(
         quality = maps.quality_mask > 0
         snr_median = float(np.nanmedian(maps.snr_map[quality])) if np.any(quality) else float("nan")
         chi2_median = float(np.nanmedian(maps.chi2_map[quality])) if np.any(quality) else float("nan")
+        append_run_log(
+            log_path,
+            "OK "
+            f"cube={cube_path} n_spaxels_fitted={maps.n_spaxels_fitted} "
+            f"n_quality_ok={maps.n_quality_ok} snr_median={snr_median} "
+            f"chi2_median={chi2_median} npz={npz_path} fits={fits_path} "
+            f"message={maps.message!r}",
+        )
         return {
             "cube_path": str(cube_path),
             "status": "ok",
@@ -160,6 +185,8 @@ def process_cube(
             "message": maps.message,
         }
     except Exception as exc:
+        message = f"{type(exc).__name__}: {exc}\n{traceback.format_exc(limit=3)}"
+        append_run_log(log_path, f"FAIL cube={cube_path} message={message}")
         return {
             "cube_path": str(cube_path),
             "status": "failed",
@@ -169,7 +196,7 @@ def process_cube(
             "chi2_median": "",
             "npz_path": str(npz_path),
             "fits_path": str(fits_path),
-            "message": f"{type(exc).__name__}: {exc}\n{traceback.format_exc(limit=3)}",
+            "message": message,
         }
 
 
@@ -187,7 +214,7 @@ def collect_cube_paths(
     if manifest is not None:
         paths.extend(read_manifest_cube_paths(manifest))
     if not paths:
-        raise ValueError("Provide --cube, --cube-glob, or --manifest")
+        raise ValueError("No cube paths found. Check --cube, --cube-glob, or --manifest")
     unique = unique_paths(paths)
     if limit is not None:
         if int(limit) < 1:
@@ -211,11 +238,14 @@ def _maybe_report_progress(
     total: int,
     rows: list[dict[str, object]],
     progress_every: int,
+    log_path: str | Path | None = None,
 ) -> None:
     if progress_every <= 0:
         return
     if completed % progress_every == 0 or completed == total:
-        print(_progress_message(completed, total, rows), flush=True)
+        message = _progress_message(completed, total, rows)
+        print(message, flush=True)
+        append_run_log(log_path, message)
 
 
 def process_catalog(
@@ -226,8 +256,14 @@ def process_catalog(
     max_spaxels: int | None = None,
     overwrite: bool = False,
     progress_every: int = 10,
+    log_path: str | Path | None = None,
 ) -> list[dict[str, object]]:
     cube_paths = list(cube_paths)
+    append_run_log(
+        log_path,
+        f"BATCH START n_cubes={len(cube_paths)} n_workers={int(n_workers)} "
+        f"max_spaxels={max_spaxels} overwrite={overwrite}",
+    )
     if int(n_workers) <= 1:
         rows: list[dict[str, object]] = []
         total = len(cube_paths)
@@ -240,9 +276,11 @@ def process_catalog(
                     max_spaxels=max_spaxels,
                     overwrite=overwrite,
                     show_progress=(total == 1),
+                    log_path=log_path,
                 )
             )
-            _maybe_report_progress(completed, total, rows, progress_every)
+            _maybe_report_progress(completed, total, rows, progress_every, log_path)
+        append_run_log(log_path, "BATCH END " + _progress_message(total, total, rows))
         return rows
 
     rows = []
@@ -256,16 +294,41 @@ def process_catalog(
                 max_spaxels,
                 overwrite,
                 False,
+                log_path,
             ): path
             for path in cube_paths
         }
         for completed, future in enumerate(as_completed(futures), start=1):
-            rows.append(future.result())
-            _maybe_report_progress(completed, len(cube_paths), rows, progress_every)
+            cube_path = futures[future]
+            try:
+                rows.append(future.result())
+            except Exception as exc:
+                npz_path, fits_path = output_paths(cube_path, output_dir)
+                message = f"{type(exc).__name__}: {exc}\n{traceback.format_exc(limit=3)}"
+                append_run_log(log_path, f"WORKER FAIL cube={cube_path} message={message}")
+                rows.append(
+                    {
+                        "cube_path": str(Path(cube_path).expanduser().resolve()),
+                        "status": "failed",
+                        "n_spaxels_fitted": 0,
+                        "n_quality_ok": 0,
+                        "snr_median": "",
+                        "chi2_median": "",
+                        "npz_path": str(npz_path),
+                        "fits_path": str(fits_path),
+                        "message": message,
+                    }
+                )
+            _maybe_report_progress(completed, len(cube_paths), rows, progress_every, log_path)
+    append_run_log(log_path, "BATCH END " + _progress_message(len(cube_paths), len(cube_paths), rows))
     return rows
 
 
-def write_manifest(rows: list[dict[str, object]], output_dir: str | Path) -> Path:
+def write_manifest(
+    rows: list[dict[str, object]],
+    output_dir: str | Path,
+    log_path: str | Path | None = None,
+) -> Path:
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / "kinematics_manifest.csv"
@@ -285,4 +348,5 @@ def write_manifest(rows: list[dict[str, object]], output_dir: str | Path) -> Pat
         writer.writeheader()
         for row in rows:
             writer.writerow({key: row.get(key, "") for key in fieldnames})
+    append_run_log(log_path, f"MANIFEST written path={path} rows={len(rows)}")
     return path

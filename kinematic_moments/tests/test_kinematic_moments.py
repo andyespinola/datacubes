@@ -15,7 +15,7 @@ from kinematic_moments.io import (
     write_npz,
 )
 from kinematic_moments.models import KinematicMaps, KinematicMomentsConfig
-from kinematic_moments.pipeline import collect_cube_paths
+from kinematic_moments.pipeline import collect_cube_paths, process_cube, write_manifest
 from kinematic_moments.ppxf_fit import build_fit_grid, build_goodpixels, load_mastar_templates
 
 
@@ -181,6 +181,31 @@ class KinematicMomentsTests(unittest.TestCase):
         self.assertEqual(template.name, "MaStar_CB19.slog_1_5.fits.gz")
         self.assertIn("kinematic_moments", template.parts)
         self.assertIn("templates", template.parts)
+
+    def test_process_cube_writes_failure_log(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="kinematics-log-") as tmp:
+            root = Path(tmp)
+            log_path = root / "run.log"
+            row = process_cube(
+                root / "missing.cube.fits.gz",
+                root / "out",
+                KinematicMomentsConfig(),
+                log_path=log_path,
+            )
+
+            self.assertEqual(row["status"], "failed")
+            text = log_path.read_text(encoding="utf-8")
+            self.assertIn("START cube=", text)
+            self.assertIn("FAIL cube=", text)
+
+    def test_write_manifest_uses_custom_log_path(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="kinematics-manifest-log-") as tmp:
+            root = Path(tmp)
+            log_path = root / "custom.log"
+            manifest = write_manifest([], root / "out", log_path=log_path)
+
+            self.assertTrue(manifest.exists())
+            self.assertIn("MANIFEST written", log_path.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
