@@ -10,3 +10,4 @@ reproject
 pydantic
 tqdm
 pytest
+ppxf>=9.4.5,<10
