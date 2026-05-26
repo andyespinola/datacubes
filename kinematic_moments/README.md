@@ -23,7 +23,9 @@ python kinematic_moments/run_kinematics.py \
 ```
 
 For full runs, pass the MaStar template explicitly or set
-`KINEMATICS_TEMPLATE_PATH`:
+`KINEMATICS_TEMPLATE_PATH`. The project also includes a bundled default at
+`kinematic_moments/templates/MaStar_CB19.slog_1_5.fits.gz`, which is used
+automatically when no override is provided.
 
 ```bash
 python kinematic_moments/run_kinematics.py \
@@ -43,7 +45,6 @@ Portable batch options:
 Example for a first 100-galaxy batch on another machine:
 
 ```bash
-export KINEMATICS_TEMPLATE_PATH=/path/to/MaStar_CB19.slog_1_5.fits.gz
 python kinematic_moments/run_kinematics.py \
   --cube-glob "/data/mangia/*.cube.fits.gz" \
   --outdir /data/kinematics_ppxf \

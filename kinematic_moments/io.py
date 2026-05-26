@@ -75,6 +75,7 @@ def read_mangia_official_cube(path: str | Path) -> OfficialCube:
 
 def _template_candidates() -> list[Path]:
     return [
+        PROJECT_ROOT / "kinematic_moments" / "templates" / DEFAULT_TEMPLATE_NAME,
         PROJECT_ROOT / "official_mangia" / "libs" / DEFAULT_TEMPLATE_NAME,
         PROJECT_ROOT / "deploy_mangia_10k" / "official_mangia" / "libs" / DEFAULT_TEMPLATE_NAME,
         PROJECT_ROOT / DEFAULT_TEMPLATE_NAME,

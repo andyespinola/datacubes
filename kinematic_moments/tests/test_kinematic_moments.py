@@ -10,6 +10,7 @@ from astropy.io import fits
 from kinematic_moments.io import (
     output_paths,
     read_mangia_official_cube,
+    resolve_template_path,
     write_fits,
     write_npz,
 )
@@ -173,6 +174,13 @@ class KinematicMomentsTests(unittest.TestCase):
             self.assertEqual(len(paths), 2)
             self.assertEqual(paths[0].name, "TNG50-1-1-0-127.cube.fits.gz")
             self.assertEqual(paths[1].name, "TNG50-2-2-0-127.cube.fits.gz")
+
+    def test_resolves_bundled_template(self) -> None:
+        template = resolve_template_path()
+
+        self.assertEqual(template.name, "MaStar_CB19.slog_1_5.fits.gz")
+        self.assertIn("kinematic_moments", template.parts)
+        self.assertIn("templates", template.parts)
 
 
 if __name__ == "__main__":
