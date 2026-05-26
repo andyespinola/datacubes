@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ImagesMangGenerator Preview Viewer</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="layout">
+    <section class="panel panel-controls">
+      <div class="hero">
+        <p class="eyebrow">Visualizador Web</p>
+        <h1>Previews RGB</h1>
+      </div>
+
+      <label class="field" for="search-input">
+        <span>Buscar</span>
+        <input id="search-input" type="search" autocomplete="off" placeholder="galaxy id, view id, archivo">
+      </label>
+
+      <label class="field" for="sort-select">
+        <span>Orden</span>
+        <select id="sort-select">
+          <option value="name">Nombre</option>
+          <option value="mtime_desc">Modificados recientes</option>
+          <option value="mtime_asc">Modificados antiguos</option>
+          <option value="size_desc">Tamanos grandes</option>
+          <option value="size_asc">Tamanos chicos</option>
+        </select>
+      </label>
+
+      <label class="field" for="page-size-select">
+        <span>Imagenes por pagina</span>
+        <select id="page-size-select">
+          <option value="48">48</option>
+          <option value="96" selected>96</option>
+          <option value="144">144</option>
+          <option value="240">240</option>
+        </select>
+      </label>
+
+      <div class="button-row">
+        <button id="prev-button" type="button">Anterior</button>
+        <button id="next-button" type="button">Siguiente</button>
+      </div>
+
+      <button id="refresh-button" class="secondary-button" type="button">Recargar indice</button>
+
+      <div id="catalog-meta" class="meta-grid"></div>
+    </section>
+
+    <section class="panel panel-gallery">
+      <div class="panel-head">
+        <h2>Galeria</h2>
+        <p id="gallery-caption">Cargando indice...</p>
+      </div>
+      <div id="image-grid" class="image-grid" aria-live="polite"></div>
+    </section>
+
+    <section class="panel panel-preview">
+      <div class="panel-head">
+        <h2>Vista</h2>
+        <p id="selection-caption">Sin seleccion</p>
+      </div>
+
+      <figure class="image-stage">
+        <img id="selected-image" alt="">
+        <figcaption id="empty-state">No hay imagen seleccionada</figcaption>
+      </figure>
+
+      <div id="image-meta" class="meta-grid meta-grid-compact"></div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
