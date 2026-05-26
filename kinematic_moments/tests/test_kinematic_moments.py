@@ -15,7 +15,7 @@ from kinematic_moments.io import (
     write_npz,
 )
 from kinematic_moments.models import KinematicMaps, KinematicMomentsConfig
-from kinematic_moments.pipeline import collect_cube_paths, process_cube, write_manifest
+from kinematic_moments.pipeline import _cube_status_message, collect_cube_paths, process_cube, write_manifest
 from kinematic_moments.ppxf_fit import build_fit_grid, build_goodpixels, load_mastar_templates
 
 
@@ -236,6 +236,24 @@ class KinematicMomentsTests(unittest.TestCase):
 
             self.assertTrue(manifest.exists())
             self.assertIn("MANIFEST written", log_path.read_text(encoding="utf-8"))
+
+    def test_cube_status_message_includes_each_cube_details(self) -> None:
+        message = _cube_status_message(
+            3,
+            10,
+            {
+                "cube_path": "/data/TNG50-test.cube.fits.gz",
+                "status": "ok",
+                "n_spaxels_fitted": 12,
+                "n_quality_ok": 11,
+                "message": "",
+            },
+        )
+
+        self.assertIn("cube 3/10", message)
+        self.assertIn("status=ok", message)
+        self.assertIn("TNG50-test.cube.fits.gz", message)
+        self.assertIn("fitted=12", message)
 
 
 if __name__ == "__main__":

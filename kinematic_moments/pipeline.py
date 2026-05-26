@@ -242,6 +242,23 @@ def _progress_message(completed: int, total: int, rows: list[dict[str, object]])
     )
 
 
+def _cube_status_message(completed: int, total: int, row: dict[str, object]) -> str:
+    cube_path = Path(str(row.get("cube_path", "")))
+    name = cube_path.name or str(row.get("cube_path", ""))
+    status = row.get("status", "")
+    fitted = row.get("n_spaxels_fitted", "")
+    quality = row.get("n_quality_ok", "")
+    message_lines = str(row.get("message", "") or "").splitlines()
+    message = message_lines[0] if message_lines else ""
+    detail = (
+        f"[kinematic_moments] cube {completed}/{total} status={status} "
+        f"name={name} fitted={fitted} quality={quality}"
+    )
+    if message:
+        detail += f" message={message}"
+    return detail
+
+
 def _maybe_report_progress(
     completed: int,
     total: int,
@@ -255,6 +272,17 @@ def _maybe_report_progress(
         message = _progress_message(completed, total, rows)
         print(message, flush=True)
         append_run_log(log_path, message)
+
+
+def _report_cube_status(
+    completed: int,
+    total: int,
+    row: dict[str, object],
+    log_path: str | Path | None = None,
+) -> None:
+    message = _cube_status_message(completed, total, row)
+    print(message, flush=True)
+    append_run_log(log_path, message)
 
 
 def process_catalog(
@@ -277,17 +305,17 @@ def process_catalog(
         rows: list[dict[str, object]] = []
         total = len(cube_paths)
         for completed, path in enumerate(cube_paths, start=1):
-            rows.append(
-                process_cube(
-                    path,
-                    output_dir,
-                    config,
-                    max_spaxels=max_spaxels,
-                    overwrite=overwrite,
-                    show_progress=(total == 1),
-                    log_path=log_path,
-                )
+            row = process_cube(
+                path,
+                output_dir,
+                config,
+                max_spaxels=max_spaxels,
+                overwrite=overwrite,
+                show_progress=(total == 1),
+                log_path=log_path,
             )
+            rows.append(row)
+            _report_cube_status(completed, total, row, log_path)
             _maybe_report_progress(completed, total, rows, progress_every, log_path)
         append_run_log(log_path, "BATCH END " + _progress_message(total, total, rows))
         return rows
@@ -310,24 +338,24 @@ def process_catalog(
         for completed, future in enumerate(as_completed(futures), start=1):
             cube_path = futures[future]
             try:
-                rows.append(future.result())
+                row = future.result()
             except Exception as exc:
                 npz_path, fits_path = output_paths(cube_path, output_dir)
                 message = f"{type(exc).__name__}: {exc}\n{traceback.format_exc(limit=3)}"
                 append_run_log(log_path, f"WORKER FAIL cube={cube_path} message={message}")
-                rows.append(
-                    {
-                        "cube_path": str(Path(cube_path).expanduser().resolve()),
-                        "status": "failed",
-                        "n_spaxels_fitted": 0,
-                        "n_quality_ok": 0,
-                        "snr_median": "",
-                        "chi2_median": "",
-                        "npz_path": str(npz_path),
-                        "fits_path": str(fits_path),
-                        "message": message,
-                    }
-                )
+                row = {
+                    "cube_path": str(Path(cube_path).expanduser().resolve()),
+                    "status": "failed",
+                    "n_spaxels_fitted": 0,
+                    "n_quality_ok": 0,
+                    "snr_median": "",
+                    "chi2_median": "",
+                    "npz_path": str(npz_path),
+                    "fits_path": str(fits_path),
+                    "message": message,
+                }
+            rows.append(row)
+            _report_cube_status(completed, len(cube_paths), row, log_path)
             _maybe_report_progress(completed, len(cube_paths), rows, progress_every, log_path)
     append_run_log(log_path, "BATCH END " + _progress_message(len(cube_paths), len(cube_paths), rows))
     return rows

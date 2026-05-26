@@ -58,3 +58,9 @@ Every run writes two audit files in the output directory:
 
 - `kinematics_manifest.csv`: one row per cube with status, output paths, and summary metrics.
 - `kinematics_run.log`: timestamped run log with input discovery, template path, per-cube start/end, skips, failures, and final summary.
+
+During batch runs, stdout and the log include one line for every completed cube:
+
+```text
+[kinematic_moments] cube 12/100 status=ok name=TNG50-...cube.fits.gz fitted=247 quality=247
+```
