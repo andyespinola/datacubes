@@ -49,6 +49,36 @@ class KinematicMomentsTests(unittest.TestCase):
             self.assertTrue(cube.valid_cube[:, 2, 2].all())
             self.assertFalse(cube.valid_cube[:, 0, 0].any())
 
+    def test_reads_wavelength_last_cube_by_header_axis(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="kinematics-axis-test-") as tmp:
+            path = Path(tmp) / "TNG50-axis.cube.fits.gz"
+            flux = np.ones((5, 4, 12), dtype=np.float32)
+            error = np.full_like(flux, 0.2)
+            mask = np.ones_like(flux, dtype=np.int16)
+            primary = fits.PrimaryHDU(flux)
+            primary.header["CRVAL1"] = 3749.0
+            primary.header["CRPIX1"] = 1.0
+            primary.header["CDELT1"] = 1.0
+            primary.header["CTYPE1"] = "WAVE"
+            primary.header["CUNIT1"] = "Wavelength [A]"
+            primary.header["CTYPE2"] = "DEC--TAN"
+            primary.header["CTYPE3"] = "RA---TAN"
+            primary.header["REDSHIFT"] = 0.15
+            fits.HDUList(
+                [
+                    primary,
+                    fits.ImageHDU(error, name="ERROR"),
+                    fits.ImageHDU(mask, name="MASK"),
+                ]
+            ).writeto(path)
+
+            cube = read_mangia_official_cube(path)
+
+            self.assertEqual(cube.flux.shape, (12, 5, 4))
+            self.assertEqual(cube.error.shape, (12, 5, 4))
+            self.assertEqual(cube.valid_cube.shape, (12, 5, 4))
+            self.assertAlmostEqual(float(cube.wave[0]), 3749.0)
+
     def test_goodpixels_masks_emission_lines(self) -> None:
         config = KinematicMomentsConfig(emission_mask_width_kms=800.0)
         lam = np.array([4700.0, 4861.0, 4875.0, 5007.0, 5200.0], dtype=np.float64)

@@ -85,8 +85,15 @@ def build_fit_grid(wave_observed: np.ndarray, redshift: float, config: Kinematic
         (wave_rest >= config.wave_range_fit[0]) & (wave_rest <= config.wave_range_fit[1])
     )
     if fit_index.size < config.min_goodpixels:
+        observed_min = float(np.nanmin(wave_observed)) if np.size(wave_observed) else float("nan")
+        observed_max = float(np.nanmax(wave_observed)) if np.size(wave_observed) else float("nan")
+        rest_min = float(np.nanmin(wave_rest)) if np.size(wave_rest) else float("nan")
+        rest_max = float(np.nanmax(wave_rest)) if np.size(wave_rest) else float("nan")
         raise ValueError(
-            f"Fit range {config.wave_range_fit} leaves only {fit_index.size} wavelength pixels"
+            f"Fit range {config.wave_range_fit} leaves only {fit_index.size} wavelength pixels "
+            f"(n_wave={len(wave_rest)}, redshift={float(redshift)}, "
+            f"observed_range=({observed_min}, {observed_max}), "
+            f"rest_range=({rest_min}, {rest_max}))"
         )
 
     wave_rest_fit = wave_rest[fit_index]

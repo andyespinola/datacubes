@@ -158,6 +158,15 @@ def process_cube(
 
     try:
         cube = read_mangia_official_cube(cube_path)
+        rest_wave = cube.wave / (1.0 + cube.redshift)
+        append_run_log(
+            log_path,
+            "CUBE "
+            f"path={cube_path} shape={cube.flux.shape} redshift={cube.redshift} "
+            f"wave_range=({float(np.nanmin(cube.wave))}, {float(np.nanmax(cube.wave))}) "
+            f"rest_range=({float(np.nanmin(rest_wave))}, {float(np.nanmax(rest_wave))}) "
+            f"coverage_spaxels={int(np.any(cube.valid_cube, axis=0).sum())}",
+        )
         maps = extract_kinematics(cube, config, max_spaxels=max_spaxels, show_progress=show_progress)
         write_npz(maps, npz_path)
         write_fits(maps, cube.header, fits_path)

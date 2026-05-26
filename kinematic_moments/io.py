@@ -34,6 +34,44 @@ def infer_wave_from_header(header: fits.Header, n_wave: int, axis: int = 3) -> n
     return float(crval) + (pixels - crpix) * float(cdelt)
 
 
+def _numpy_axis_from_fits_axis(axis: int) -> int:
+    return 3 - int(axis)
+
+
+def infer_spectral_axis(header: fits.Header, shape: tuple[int, int, int]) -> int:
+    scored: list[tuple[int, int]] = []
+    for axis in (1, 2, 3):
+        crval = header.get(f"CRVAL{axis}")
+        cdelt = header.get(f"CDELT{axis}", header.get(f"CD{axis}_{axis}"))
+        numpy_axis = _numpy_axis_from_fits_axis(axis)
+        axis_len = int(shape[numpy_axis])
+        if crval is None or cdelt is None:
+            continue
+        ctype = str(header.get(f"CTYPE{axis}", "")).upper()
+        cunit = str(header.get(f"CUNIT{axis}", "")).upper()
+        score = 0
+        if any(token in ctype or token in cunit for token in ("WAVE", "LAMBDA", "ANGSTROM")):
+            score += 100
+        if axis_len == max(shape):
+            score += 10
+        if axis_len > 100:
+            score += 5
+        if "RA" in ctype or "DEC" in ctype:
+            score -= 100
+        scored.append((score, axis))
+    if not scored:
+        raise ValueError("Could not infer spectral axis from FITS header")
+    scored.sort(reverse=True)
+    return scored[0][1]
+
+
+def orient_spectral_first(data: np.ndarray, spectral_fits_axis: int) -> np.ndarray:
+    numpy_axis = _numpy_axis_from_fits_axis(spectral_fits_axis)
+    if numpy_axis == 0:
+        return data
+    return np.moveaxis(data, numpy_axis, 0)
+
+
 def read_mangia_official_cube(path: str | Path) -> OfficialCube:
     path = Path(path).resolve()
     with fits.open(path, memmap=False) as hdul:
@@ -59,7 +97,11 @@ def read_mangia_official_cube(path: str | Path) -> OfficialCube:
         if "REDSHIFT" not in header:
             raise ValueError(f"Official MaNGIA cube is missing REDSHIFT: {path}")
 
-        wave = infer_wave_from_header(header, flux.shape[0], axis=3)
+        spectral_axis = infer_spectral_axis(header, tuple(flux.shape))
+        flux = orient_spectral_first(flux, spectral_axis)
+        error = orient_spectral_first(error, spectral_axis)
+        mask = orient_spectral_first(mask, spectral_axis)
+        wave = infer_wave_from_header(header, flux.shape[0], axis=spectral_axis)
         valid_cube = np.asarray(mask > 0, dtype=bool)
         return OfficialCube(
             path=path,
