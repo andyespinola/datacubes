@@ -32,6 +32,9 @@ SIGMA_CANDIDATES = {
 }
 MAP_SUFFIXES = (".npz", ".fits", ".fits.gz", ".h5", ".hdf5")
 MORPHOLOGY_SUFFIXES = (".hdf5", ".h5", ".fits", ".fits.gz")
+PIPE3D_STACK_EXTNAME = "SSP_pyPipe3D_REC"
+PIPE3D_VLOS_INDEX = 13
+PIPE3D_SIGMA_INDEX = 15
 
 
 def shape_string(shape: tuple[int, ...] | list[int] | None) -> str:
@@ -60,6 +63,41 @@ def _best_key(names: Iterable[str], candidates: set[str]) -> str:
 def detect_kinematic_keys(names: Iterable[str]) -> tuple[str, str]:
     names = list(names)
     return _best_key(names, VELOCITY_CANDIDATES), _best_key(names, SIGMA_CANDIDATES)
+
+
+def _stack_key(dataset: str, index: int) -> str:
+    return f"{dataset}[{int(index)}]"
+
+
+def _pipe3d_stack_keys(dataset: str, shape: tuple[int, ...] | None) -> tuple[str, str, str]:
+    if shape is None or len(shape) < 3 or int(shape[0]) <= PIPE3D_SIGMA_INDEX:
+        return "", "", ""
+    return (
+        _stack_key(dataset, PIPE3D_VLOS_INDEX),
+        _stack_key(dataset, PIPE3D_SIGMA_INDEX),
+        shape_string(tuple(shape[1:])),
+    )
+
+
+def _header_value(header, *keys: str) -> str:
+    for key in keys:
+        value = header.get(key)
+        if value:
+            return str(value)
+    return ""
+
+
+def _header_channel_indices(header, max_index: int) -> tuple[int | None, int | None]:
+    v_index: int | None = None
+    sigma_index: int | None = None
+    for index in range(max_index):
+        label = _header_value(header, f"DESC_{index}", f"DESC{index}", f"DESC {index}")
+        norm = _normalized_name(label)
+        if v_index is None and ("VLOS" in norm or "VELOCITY" in norm or norm == "VEL"):
+            v_index = index
+        if sigma_index is None and ("SIGMA" in norm or "DISPERSION" in norm):
+            sigma_index = index
+    return v_index, sigma_index
 
 
 def _is_cube_path(path: Path) -> bool:
@@ -193,6 +231,23 @@ def _fits_map_asset(path: Path) -> MapAsset:
                 if hdu.name == v_key and getattr(hdu, "data", None) is not None:
                     shape = shape_string(tuple(hdu.data.shape))
                     break
+            if not (v_key and sigma_key):
+                for hdu in hdul:
+                    data = getattr(hdu, "data", None)
+                    if data is None:
+                        continue
+                    extname = str(hdu.header.get("EXTNAME", hdu.name)).strip() or str(hdu.name)
+                    data_shape = tuple(int(value) for value in data.shape)
+                    if _normalized_name(extname) == _normalized_name(PIPE3D_STACK_EXTNAME):
+                        v_key, sigma_key, shape = _pipe3d_stack_keys(extname, data_shape)
+                        if v_key and sigma_key:
+                            break
+                    v_index, sigma_index = _header_channel_indices(hdu.header, data_shape[0] if data_shape else 0)
+                    if v_index is not None and sigma_index is not None and len(data_shape) >= 3:
+                        v_key = _stack_key(extname, v_index)
+                        sigma_key = _stack_key(extname, sigma_index)
+                        shape = shape_string(data_shape[1:])
+                        break
     except Exception as exc:
         return MapAsset(parsed.key if parsed else None, path.resolve(), "fits", message=f"{type(exc).__name__}: {exc}")
     return MapAsset(parsed.key if parsed else None, path.resolve(), "fits", v_key, sigma_key, shape)
@@ -216,6 +271,12 @@ def _hdf5_map_asset(path: Path) -> MapAsset:
             handle.visititems(visitor)
         v_key, sigma_key = detect_kinematic_keys(names)
         shape = shape_string(shapes.get(v_key)) if v_key else ""
+        if not (v_key and sigma_key):
+            for name, data_shape in shapes.items():
+                if _normalized_name(Path(name).name) == _normalized_name(PIPE3D_STACK_EXTNAME):
+                    v_key, sigma_key, shape = _pipe3d_stack_keys(name, data_shape)
+                    if v_key and sigma_key:
+                        break
     except Exception as exc:
         return MapAsset(parsed.key if parsed else None, path.resolve(), "hdf5", message=f"{type(exc).__name__}: {exc}")
     return MapAsset(parsed.key if parsed else None, path.resolve(), "hdf5", v_key, sigma_key, shape)

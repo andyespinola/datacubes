@@ -10,6 +10,7 @@ import numpy as np
 from mangia_asset_matcher.ids import UnitKey, parse_unit_from_text
 from mangia_asset_matcher.match_assets import main
 from mangia_asset_matcher.matcher import MatchConfig, build_matches, write_outputs
+from mangia_asset_matcher.scanners import _pipe3d_stack_keys
 
 
 def write_catalog(path: Path, n_units: int) -> None:
@@ -191,6 +192,37 @@ class AssetMatcherTests(unittest.TestCase):
             with (outdir / "matched_units.csv").open(newline="", encoding="utf-8") as handle:
                 rows = list(csv.DictReader(handle))
             self.assertEqual(len(rows), 3)
+
+    def test_pipe3d_stack_keys_use_documented_ssp_channels(self) -> None:
+        v_key, sigma_key, shape = _pipe3d_stack_keys("SSP_pyPipe3D_REC", (20, 69, 69))
+
+        self.assertEqual(v_key, "SSP_pyPipe3D_REC[13]")
+        self.assertEqual(sigma_key, "SSP_pyPipe3D_REC[15]")
+        self.assertEqual(shape, "69x69")
+
+    def test_detects_pipe3d_fits_stack_channels_when_astropy_is_available(self) -> None:
+        try:
+            from astropy.io import fits
+        except Exception:
+            self.skipTest("astropy is not installed")
+
+        with tempfile.TemporaryDirectory(prefix="asset-matcher-fits-") as tmp:
+            root = Path(tmp)
+            catalog, cubes, tng, maps, _outdir = create_assets(root, 1, missing_v={0}, missing_sigma={0})
+            map_path = maps / f"{unit_name(0)}.cube_maps.fits"
+            payload = np.zeros((20, 4, 4), dtype=np.float32)
+            hdu = fits.ImageHDU(payload, name="SSP_pyPipe3D_REC")
+            hdu.header["DESC_13"] = "Vlos"
+            hdu.header["DESC_15"] = "sigma"
+            fits.HDUList([fits.PrimaryHDU(), hdu]).writeto(map_path)
+            (maps / f"{unit_name(0)}.maps.npz").unlink()
+
+            result = build_matches(config_for(catalog, cubes, tng, maps))
+
+        self.assertEqual(len(result.matched_all), 1)
+        self.assertEqual(result.matched_all[0]["v_map_key"], "SSP_pyPipe3D_REC[13]")
+        self.assertEqual(result.matched_all[0]["sigma_map_key"], "SSP_pyPipe3D_REC[15]")
+        self.assertEqual(result.matched_all[0]["maps2d_shape"], "4x4")
 
 
 if __name__ == "__main__":
