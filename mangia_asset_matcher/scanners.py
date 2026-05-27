@@ -79,27 +79,6 @@ def _pipe3d_stack_keys(dataset: str, shape: tuple[int, ...] | None) -> tuple[str
     )
 
 
-def _header_value(header, *keys: str) -> str:
-    for key in keys:
-        value = header.get(key)
-        if value:
-            return str(value)
-    return ""
-
-
-def _header_channel_indices(header, max_index: int) -> tuple[int | None, int | None]:
-    v_index: int | None = None
-    sigma_index: int | None = None
-    for index in range(max_index):
-        label = _header_value(header, f"DESC_{index}", f"DESC{index}", f"DESC {index}")
-        norm = _normalized_name(label)
-        if v_index is None and ("VLOS" in norm or "VELOCITY" in norm or norm == "VEL"):
-            v_index = index
-        if sigma_index is None and ("SIGMA" in norm or "DISPERSION" in norm):
-            sigma_index = index
-    return v_index, sigma_index
-
-
 def _is_cube_path(path: Path) -> bool:
     name = path.name
     return (name.endswith(".cube.fits") or name.endswith(".cube.fits.gz")) and ".cube_val." not in name
@@ -242,12 +221,6 @@ def _fits_map_asset(path: Path) -> MapAsset:
                         v_key, sigma_key, shape = _pipe3d_stack_keys(extname, data_shape)
                         if v_key and sigma_key:
                             break
-                    v_index, sigma_index = _header_channel_indices(hdu.header, data_shape[0] if data_shape else 0)
-                    if v_index is not None and sigma_index is not None and len(data_shape) >= 3:
-                        v_key = _stack_key(extname, v_index)
-                        sigma_key = _stack_key(extname, sigma_index)
-                        shape = shape_string(data_shape[1:])
-                        break
     except Exception as exc:
         return MapAsset(parsed.key if parsed else None, path.resolve(), "fits", message=f"{type(exc).__name__}: {exc}")
     return MapAsset(parsed.key if parsed else None, path.resolve(), "fits", v_key, sigma_key, shape)
