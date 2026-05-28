@@ -74,6 +74,21 @@ export $(grep -v '^#' .env | xargs)
   --outdir outputs
 ```
 
+Para procesar las unidades ya macheadas por `mangia_asset_matcher`:
+
+```bash
+cd /home/aespinola/Documents/pythonprojects/datacubes
+python structural_labeling/run_matched_labeling.py \
+  --matched-units /home/aespinola/matched_assets/matched_units.csv \
+  --catalog MaNGIA_catalog.fits \
+  --outdir /media/nuevo/structural_labels \
+  --continue-on-error
+```
+
+Este runner es reanudable: si existen `*.labels.npz`, `*.qa.npz` y
+`*.summary.json`, la unidad se marca como `skipped_existing` salvo que se
+use `--overwrite`.
+
 ### 4. Calibrar sobre un piloto
 
 ```bash

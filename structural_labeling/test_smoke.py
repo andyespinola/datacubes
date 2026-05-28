@@ -6,19 +6,29 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from astropy.io import fits
-import h5py
 import numpy as np
 
-from labeling.config import LabelConfig
-from labeling.manifest import read_manifest
-from labeling.pipeline import LabelingPipeline
-from labeling.ssp import load_ssp_grid
-from labeling.tng import load_cutout_truth, load_morphology_targets
+try:
+    from astropy.io import fits
+    import h5py
+except Exception as exc:  # pragma: no cover - environment dependent
+    fits = None
+    h5py = None
+    IMPORT_ERROR = exc
+else:
+    IMPORT_ERROR = None
 
 
 class StructuralLabelingSmokeTest(unittest.TestCase):
     def test_pipeline_runs_on_synthetic_data(self) -> None:
+        if IMPORT_ERROR is not None:
+            self.skipTest(f"missing optional dependency: {IMPORT_ERROR}")
+        from labeling.config import LabelConfig
+        from labeling.manifest import read_manifest
+        from labeling.pipeline import LabelingPipeline
+        from labeling.ssp import load_ssp_grid
+        from labeling.tng import load_cutout_truth, load_morphology_targets
+
         work = Path(tempfile.mkdtemp(prefix="structural-labeling-"))
 
         ssp = np.ones((3, 20), dtype=np.float32)
