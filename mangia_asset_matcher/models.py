@@ -35,6 +35,7 @@ class MapAsset:
     sigma_map_key: str = ""
     shape: str = ""
     message: str = ""
+    ifu_design: int | None = None
 
     @property
     def has_v(self) -> bool:

@@ -42,8 +42,8 @@ def write_catalog(path: Path, n_units: int) -> None:
             )
 
 
-def unit_name(idx: int) -> str:
-    return f"TNG50-87-{1000 + idx}-{idx % 2}-37"
+def unit_name(idx: int, ifu_design: int = 37) -> str:
+    return f"TNG50-87-{1000 + idx}-{idx % 2}-{ifu_design}"
 
 
 def create_assets(
@@ -55,6 +55,7 @@ def create_assets(
     missing_metadata: set[int] | None = None,
     missing_v: set[int] | None = None,
     missing_sigma: set[int] | None = None,
+    file_ifu_design: int = 37,
 ) -> tuple[Path, Path, Path, Path, Path]:
     missing_cube = missing_cube or set()
     missing_cutout = missing_cutout or set()
@@ -72,7 +73,7 @@ def create_assets(
     write_catalog(catalog, n_units)
 
     for idx in range(n_units):
-        name = unit_name(idx)
+        name = unit_name(idx, file_ifu_design)
         if idx not in missing_cube:
             (cubes / f"{name}.cube.fits.gz").touch()
             (cubes / f"{name}.cube_val.fits.gz").touch()
@@ -121,6 +122,9 @@ class AssetMatcherTests(unittest.TestCase):
             self.assertEqual(len(result.matched_all), 3)
             self.assertEqual(len(result.selected), 2)
             self.assertEqual(result.selected[0]["selection_rank"], 1)
+            self.assertEqual(result.selected[0]["cube_ifu_file"], 37)
+            self.assertEqual(result.selected[0]["maps2d_ifu_file"], 37)
+            self.assertTrue(result.selected[0]["ifu_file_matches_catalog"])
             self.assertTrue((outdir / "matched_units.csv").exists())
             self.assertTrue((outdir / "matched_units_all.csv").exists())
             self.assertTrue((outdir / "asset_inventory.csv").exists())
@@ -223,6 +227,19 @@ class AssetMatcherTests(unittest.TestCase):
         self.assertEqual(result.matched_all[0]["v_map_key"], "SSP_pyPipe3D_REC[13]")
         self.assertEqual(result.matched_all[0]["sigma_map_key"], "SSP_pyPipe3D_REC[15]")
         self.assertEqual(result.matched_all[0]["maps2d_shape"], "4x4")
+
+    def test_reports_file_ifu_mismatches_without_excluding_rows(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="asset-matcher-ifu-") as tmp:
+            root = Path(tmp)
+            catalog, cubes, tng, maps, _outdir = create_assets(root, 1, file_ifu_design=127)
+
+            result = build_matches(config_for(catalog, cubes, tng, maps))
+
+        self.assertEqual(len(result.matched_all), 1)
+        self.assertEqual(result.matched_all[0]["ifu_design_catalog"], 37)
+        self.assertEqual(result.matched_all[0]["cube_ifu_file"], 127)
+        self.assertEqual(result.matched_all[0]["maps2d_ifu_file"], 127)
+        self.assertFalse(result.matched_all[0]["ifu_file_matches_catalog"])
 
 
 if __name__ == "__main__":

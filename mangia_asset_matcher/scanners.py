@@ -185,22 +185,44 @@ def scan_tng_cache(tng_cache: str | Path) -> TngAssets:
 
 def _npz_map_asset(path: Path) -> MapAsset:
     parsed = parse_unit_from_text(path.name)
+    ifu_design = parsed.ifu_design if parsed else None
     try:
         with np.load(path, allow_pickle=False) as data:
             names = list(data.files)
             v_key, sigma_key = detect_kinematic_keys(names)
             shape = shape_string(tuple(data[v_key].shape)) if v_key else ""
     except Exception as exc:
-        return MapAsset(parsed.key if parsed else None, path.resolve(), "npz", message=f"{type(exc).__name__}: {exc}")
-    return MapAsset(parsed.key if parsed else None, path.resolve(), "npz", v_key, sigma_key, shape)
+        return MapAsset(
+            parsed.key if parsed else None,
+            path.resolve(),
+            "npz",
+            message=f"{type(exc).__name__}: {exc}",
+            ifu_design=ifu_design,
+        )
+    return MapAsset(
+        parsed.key if parsed else None,
+        path.resolve(),
+        "npz",
+        v_key,
+        sigma_key,
+        shape,
+        ifu_design=ifu_design,
+    )
 
 
 def _fits_map_asset(path: Path) -> MapAsset:
     parsed = parse_unit_from_text(path.name)
+    ifu_design = parsed.ifu_design if parsed else None
     try:
         from astropy.io import fits
     except Exception as exc:
-        return MapAsset(parsed.key if parsed else None, path.resolve(), "fits", message=f"astropy unavailable: {exc}")
+        return MapAsset(
+            parsed.key if parsed else None,
+            path.resolve(),
+            "fits",
+            message=f"astropy unavailable: {exc}",
+            ifu_design=ifu_design,
+        )
     try:
         with fits.open(path, memmap=False) as hdul:
             names = [hdu.name for hdu in hdul if getattr(hdu, "data", None) is not None]
@@ -222,16 +244,37 @@ def _fits_map_asset(path: Path) -> MapAsset:
                         if v_key and sigma_key:
                             break
     except Exception as exc:
-        return MapAsset(parsed.key if parsed else None, path.resolve(), "fits", message=f"{type(exc).__name__}: {exc}")
-    return MapAsset(parsed.key if parsed else None, path.resolve(), "fits", v_key, sigma_key, shape)
+        return MapAsset(
+            parsed.key if parsed else None,
+            path.resolve(),
+            "fits",
+            message=f"{type(exc).__name__}: {exc}",
+            ifu_design=ifu_design,
+        )
+    return MapAsset(
+        parsed.key if parsed else None,
+        path.resolve(),
+        "fits",
+        v_key,
+        sigma_key,
+        shape,
+        ifu_design=ifu_design,
+    )
 
 
 def _hdf5_map_asset(path: Path) -> MapAsset:
     parsed = parse_unit_from_text(path.name)
+    ifu_design = parsed.ifu_design if parsed else None
     try:
         import h5py
     except Exception as exc:
-        return MapAsset(parsed.key if parsed else None, path.resolve(), "hdf5", message=f"h5py unavailable: {exc}")
+        return MapAsset(
+            parsed.key if parsed else None,
+            path.resolve(),
+            "hdf5",
+            message=f"h5py unavailable: {exc}",
+            ifu_design=ifu_design,
+        )
     names: list[str] = []
     shapes: dict[str, tuple[int, ...]] = {}
     try:
@@ -251,8 +294,22 @@ def _hdf5_map_asset(path: Path) -> MapAsset:
                     if v_key and sigma_key:
                         break
     except Exception as exc:
-        return MapAsset(parsed.key if parsed else None, path.resolve(), "hdf5", message=f"{type(exc).__name__}: {exc}")
-    return MapAsset(parsed.key if parsed else None, path.resolve(), "hdf5", v_key, sigma_key, shape)
+        return MapAsset(
+            parsed.key if parsed else None,
+            path.resolve(),
+            "hdf5",
+            message=f"{type(exc).__name__}: {exc}",
+            ifu_design=ifu_design,
+        )
+    return MapAsset(
+        parsed.key if parsed else None,
+        path.resolve(),
+        "hdf5",
+        v_key,
+        sigma_key,
+        shape,
+        ifu_design=ifu_design,
+    )
 
 
 def _inspect_map_file(path: Path) -> MapAsset:
@@ -263,7 +320,12 @@ def _inspect_map_file(path: Path) -> MapAsset:
     if path.name.endswith(".h5") or path.name.endswith(".hdf5"):
         return _hdf5_map_asset(path)
     parsed = parse_unit_from_text(path.name)
-    return MapAsset(parsed.key if parsed else None, path.resolve(), "unknown")
+    return MapAsset(
+        parsed.key if parsed else None,
+        path.resolve(),
+        "unknown",
+        ifu_design=parsed.ifu_design if parsed else None,
+    )
 
 
 def _path_from_manifest_row(row: dict[str, str], manifest_path: Path) -> Path | None:
@@ -289,14 +351,20 @@ def _map_asset_from_manifest_row(row: dict[str, str], manifest_path: Path) -> Ma
     path = _path_from_manifest_row(row, manifest_path)
     if path is None:
         return None
+    parsed_path = parse_unit_from_text(str(path))
+    ifu_design = parsed_path.ifu_design if parsed_path else None
     key = _unit_from_manifest_row(row, str(path))
     v_key = row.get("v_map_key", row.get("v_key", row.get("velocity_key", ""))).strip()
     sigma_key = row.get("sigma_map_key", row.get("sigma_key", row.get("dispersion_key", ""))).strip()
     if v_key and sigma_key:
         fmt = row.get("maps2d_format", row.get("format", "")).strip() or _format_from_path(path)
         shape = row.get("maps2d_shape", row.get("shape", "")).strip()
-        return MapAsset(key, path.resolve(), fmt, v_key, sigma_key, shape)
-    inspected = _inspect_map_file(path) if path.exists() else MapAsset(key, path.resolve(), _format_from_path(path), message="path missing")
+        return MapAsset(key, path.resolve(), fmt, v_key, sigma_key, shape, ifu_design=ifu_design)
+    inspected = (
+        _inspect_map_file(path)
+        if path.exists()
+        else MapAsset(key, path.resolve(), _format_from_path(path), message="path missing", ifu_design=ifu_design)
+    )
     return MapAsset(
         key or inspected.key,
         inspected.path,
@@ -304,7 +372,8 @@ def _map_asset_from_manifest_row(row: dict[str, str], manifest_path: Path) -> Ma
         inspected.v_map_key,
         inspected.sigma_map_key,
         inspected.shape,
-        inspected.message,
+        message=inspected.message,
+        ifu_design=inspected.ifu_design if inspected.ifu_design is not None else ifu_design,
     )
 
 

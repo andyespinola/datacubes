@@ -31,3 +31,7 @@ summary without writing output files.
   summary.
 
 The matching unit is `(snapshot, subhalo_id, view)`.
+
+The manifests also expose `cube_ifu_file`, `maps2d_ifu_file`, and
+`ifu_file_matches_catalog` so filename IFU suffixes can be audited against
+`ifu_design_catalog` without blocking otherwise strict matches.

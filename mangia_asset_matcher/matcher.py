@@ -43,6 +43,9 @@ MATCHED_FIELDNAMES = [
     "subhalo_id",
     "view",
     "ifu_design_catalog",
+    "cube_ifu_file",
+    "maps2d_ifu_file",
+    "ifu_file_matches_catalog",
     "cube_path",
     "cutout_path",
     "metadata_path",
@@ -151,6 +154,13 @@ def scan_assets(config: MatchConfig) -> AssetScan:
     )
 
 
+def _available_ifu_match(catalog_ifu: int, *file_ifus: int | None) -> bool | str:
+    available = [int(value) for value in file_ifus if value is not None]
+    if not available:
+        return ""
+    return all(value == int(catalog_ifu) for value in available)
+
+
 def _base_row(unit: CatalogUnit, morphology_catalog_path: Path | None) -> dict[str, object]:
     key = unit.key
     return {
@@ -161,6 +171,9 @@ def _base_row(unit: CatalogUnit, morphology_catalog_path: Path | None) -> dict[s
         "subhalo_id": key.subhalo_id,
         "view": key.view,
         "ifu_design_catalog": unit.ifu_design,
+        "cube_ifu_file": "",
+        "maps2d_ifu_file": "",
+        "ifu_file_matches_catalog": "",
         "cube_path": "",
         "cutout_path": "",
         "metadata_path": "",
@@ -190,6 +203,7 @@ def _inventory_row(unit: CatalogUnit, assets: AssetScan) -> dict[str, object]:
     row = _base_row(unit, morphology)
     if cube is not None:
         row["cube_path"] = str(cube.path)
+        row["cube_ifu_file"] = cube.ifu_design if cube.ifu_design is not None else ""
         row["cube_shape"] = cube.shape
     if cutout is not None:
         row["cutout_path"] = str(cutout)
@@ -197,10 +211,16 @@ def _inventory_row(unit: CatalogUnit, assets: AssetScan) -> dict[str, object]:
         row["metadata_path"] = str(metadata)
     if maps is not None:
         row["maps2d_path"] = str(maps.path)
+        row["maps2d_ifu_file"] = maps.ifu_design if maps.ifu_design is not None else ""
         row["maps2d_format"] = maps.format
         row["v_map_key"] = maps.v_map_key
         row["sigma_map_key"] = maps.sigma_map_key
         row["maps2d_shape"] = maps.shape
+    row["ifu_file_matches_catalog"] = _available_ifu_match(
+        unit.ifu_design,
+        cube.ifu_design if cube is not None else None,
+        maps.ifu_design if maps is not None else None,
+    )
 
     has_cube = cube is not None
     has_cutout = cutout is not None
