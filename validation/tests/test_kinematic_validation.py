@@ -55,12 +55,38 @@ def synthetic_unit(with_bar: bool = True, with_moments: bool = False) -> Kinemat
     )
 
 
+def contaminated_reference_unit() -> KinematicValidationInput:
+    h, w = 12, 12
+    yy, xx = np.indices((h, w))
+    radius = np.sqrt((xx - 5.5) ** 2 + (yy - 5.5) ** 2)
+    y = np.zeros((5, h, w), dtype=np.float32)
+    y[0, radius < 2.0] = 0.90
+    y[1, (radius >= 2.0) & (radius < 4.0)] = 0.90
+    y[4, radius >= 4.0] = 0.90
+
+    v = (xx - 5.5).astype(np.float32) * 35.0
+    sigma = np.full((h, w), 90.0, dtype=np.float32)
+    sigma[radius < 2.0] = 180.0
+    return KinematicValidationInput(
+        unit_id="TNG50-87-141934-0",
+        galaxy_id="TNG50-87-141934",
+        canonical_id="TNG50-87-141934-0-37",
+        view_id=0,
+        y_int=y,
+        m_val=np.ones((h, w), dtype=bool),
+        v_star=v,
+        sigma_star=sigma,
+        r_bar=None,
+    )
+
+
 class KinematicValidationTests(unittest.TestCase):
     def test_validates_ab_without_penalizing_missing_h3h4(self) -> None:
         result = validate_kinematic_unit(synthetic_unit(with_bar=False), KinematicValidationConfig(min_spaxels_for_test=10))
 
         self.assertEqual(result.test_a_rotation, "PASS")
         self.assertEqual(result.rotation_test_mode, "contrast")
+        self.assertEqual(result.rotation_reference_mode, "bulge_other")
         self.assertAlmostEqual(result.velocity_center_median, 0.0, places=5)
         self.assertGreater(result.v_over_sigma_ratio, 1.10)
         self.assertEqual(result.test_b_dispersion, "PASS")
@@ -100,6 +126,33 @@ class KinematicValidationTests(unittest.TestCase):
 
         self.assertEqual(result.rotation_test_mode, "spearman")
         self.assertIsNotNone(result.rho_disk)
+        self.assertEqual(result.test_a_rotation, "PASS")
+
+    def test_bulge_reference_excludes_other_contamination(self) -> None:
+        unit = contaminated_reference_unit()
+        default_result = validate_kinematic_unit(unit, KinematicValidationConfig(min_spaxels_for_test=10))
+        bulge_result = validate_kinematic_unit(
+            unit,
+            KinematicValidationConfig(rotation_reference_mode="bulge", min_spaxels_for_test=10),
+        )
+
+        self.assertEqual(default_result.test_a_rotation, "FAIL")
+        self.assertGreater(default_result.n_other_spaxels, default_result.n_bulge_spaxels)
+        self.assertEqual(bulge_result.test_a_rotation, "PASS")
+        self.assertEqual(bulge_result.n_reference_spaxels, bulge_result.n_bulge_spaxels)
+
+    def test_central_reference_is_available_for_test_a(self) -> None:
+        result = validate_kinematic_unit(
+            synthetic_unit(with_bar=False),
+            KinematicValidationConfig(
+                rotation_reference_mode="central",
+                central_reference_radius_fraction=0.30,
+                min_spaxels_for_test=10,
+            ),
+        )
+
+        self.assertEqual(result.rotation_reference_mode, "central")
+        self.assertGreaterEqual(result.n_reference_spaxels, 10)
         self.assertEqual(result.test_a_rotation, "PASS")
 
     def test_velocity_is_centered_before_vsigma(self) -> None:

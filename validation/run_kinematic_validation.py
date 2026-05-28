@@ -69,6 +69,7 @@ def _error_result(row: dict[str, str], labels_dir: Path, status: str, error: str
         test_c_bar_sigma="N/A",
         test_d_h3_signature="N/A",
         rotation_test_mode="",
+        rotation_reference_mode="",
         rho_disk=None,
         v_over_sigma_disk_median=None,
         v_over_sigma_reference_median=None,
@@ -150,6 +151,8 @@ def run(args: argparse.Namespace) -> int:
         center_velocity=not args.no_center_velocity,
         min_sigma_star=args.min_sigma_star,
         rotation_test_mode=args.rotation_test,
+        rotation_reference_mode=args.test_a_reference,
+        central_reference_radius_fraction=args.central_reference_radius_fraction,
         rho_disk_min=args.rho_disk_min,
         disk_vsigma_ratio_min=args.disk_vsigma_ratio_min,
         sigma_ratio_min=args.sigma_ratio_min,
@@ -214,6 +217,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-center-velocity", action="store_true", help="Usa Vlos crudo sin restar la mediana del mapa valido")
     parser.add_argument("--min-sigma-star", type=float, default=1.0, help="Sigma minima para incluir un spaxel en V/sigma")
     parser.add_argument("--rotation-test", choices=("contrast", "spearman"), default="contrast")
+    parser.add_argument(
+        "--test-a-reference",
+        choices=("bulge_other", "bulge", "central"),
+        default="bulge_other",
+        help="Referencia para Test A en modo contrast",
+    )
+    parser.add_argument(
+        "--central-reference-radius-fraction",
+        type=float,
+        default=0.25,
+        help="Fraccion del radio valido usada por --test-a-reference central",
+    )
     parser.add_argument("--rho-disk-min", type=float, default=0.20)
     parser.add_argument("--disk-vsigma-ratio-min", type=float, default=1.10)
     parser.add_argument("--sigma-ratio-min", type=float, default=1.10)

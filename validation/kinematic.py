@@ -14,6 +14,7 @@ from scipy.stats import spearmanr
 
 Status = Literal["PASS", "FAIL", "N/A"]
 RotationTestMode = Literal["contrast", "spearman"]
+RotationReferenceMode = Literal["bulge_other", "bulge", "central"]
 
 LABEL_CLASS_NAMES = ("bulge", "disk", "bar", "arm", "other")
 LABEL_CLASS_ALIASES = {
@@ -39,6 +40,8 @@ class KinematicValidationConfig:
     center_velocity: bool = True
     min_sigma_star: float = 1.0
     rotation_test_mode: RotationTestMode = "contrast"
+    rotation_reference_mode: RotationReferenceMode = "bulge_other"
+    central_reference_radius_fraction: float = 0.25
     rho_disk_min: float = 0.20
     disk_vsigma_ratio_min: float = 1.10
     sigma_ratio_min: float = 1.10
@@ -75,6 +78,7 @@ class KinematicChecks:
     test_c_bar_sigma: Status
     test_d_h3_signature: Status
     rotation_test_mode: str
+    rotation_reference_mode: str
     rho_disk: float | None
     v_over_sigma_disk_median: float | None
     v_over_sigma_reference_median: float | None
@@ -121,6 +125,8 @@ class KinematicSuccessReport:
     coherence_score_percentiles: dict[str, float]
     n_units_skipped: int = 0
     rotation_test_mode: str = "contrast"
+    rotation_reference_mode: str = "bulge_other"
+    central_reference_radius_fraction: float = 0.25
     disk_vsigma_ratio_min: float = 1.10
     center_velocity: bool = True
     min_sigma_star: float = 1.0
@@ -168,6 +174,39 @@ def _test_a_failure_mode(status: Status, mode: str, disk_count: int, reference_c
     return "unknown"
 
 
+def _central_reference_mask(valid: np.ndarray, radius_fraction: float) -> np.ndarray:
+    valid = np.asarray(valid).astype(bool)
+    if not np.any(valid):
+        return np.zeros_like(valid, dtype=bool)
+    yy, xx = np.indices(valid.shape)
+    y_valid = yy[valid].astype(np.float64)
+    x_valid = xx[valid].astype(np.float64)
+    y0 = float(np.nanmedian(y_valid))
+    x0 = float(np.nanmedian(x_valid))
+    radius = np.sqrt((xx.astype(np.float64) - x0) ** 2 + (yy.astype(np.float64) - y0) ** 2)
+    max_radius = float(np.nanmax(radius[valid]))
+    if max_radius <= 0.0:
+        return valid.copy()
+    fraction = min(max(float(radius_fraction), 0.0), 1.0)
+    return valid & (radius <= fraction * max_radius)
+
+
+def _rotation_reference_mask(
+    mode: RotationReferenceMode,
+    valid: np.ndarray,
+    bulge_mask: np.ndarray,
+    other_mask: np.ndarray,
+    central_reference_radius_fraction: float,
+) -> np.ndarray:
+    if mode == "bulge_other":
+        return bulge_mask | other_mask
+    if mode == "bulge":
+        return bulge_mask
+    if mode == "central":
+        return _central_reference_mask(valid, central_reference_radius_fraction)
+    raise ValueError(f"Invalid rotation_reference_mode={mode!r}")
+
+
 def _score(statuses: Iterable[Status]) -> tuple[int, int, float, bool]:
     applicable = [status for status in statuses if status != "N/A"]
     n_applicable = len(applicable)
@@ -206,7 +245,13 @@ def validate_kinematic_unit(
     disk_mask = _dominant_mask(y_int, 1, valid, config.dominant_class_threshold)
     bar_mask = _dominant_mask(y_int, 2, valid, config.dominant_class_threshold)
     other_mask = _dominant_mask(y_int, 4, valid, config.dominant_class_threshold)
-    hot_reference_mask = bulge_mask | other_mask
+    hot_reference_mask = _rotation_reference_mask(
+        config.rotation_reference_mode,
+        valid,
+        bulge_mask,
+        other_mask,
+        config.central_reference_radius_fraction,
+    )
     n_valid_spaxels = int(np.count_nonzero(valid))
     n_disk_spaxels = int(np.count_nonzero(disk_mask))
     n_reference_spaxels = int(np.count_nonzero(hot_reference_mask))
@@ -292,6 +337,7 @@ def validate_kinematic_unit(
         test_c_bar_sigma=test_c,
         test_d_h3_signature=test_d,
         rotation_test_mode=config.rotation_test_mode,
+        rotation_reference_mode=config.rotation_reference_mode,
         rho_disk=rho_disk,
         v_over_sigma_disk_median=v_over_sigma_disk,
         v_over_sigma_reference_median=v_over_sigma_reference,
@@ -363,6 +409,10 @@ def build_success_report(
         coherence_score_percentiles=percentiles,
         n_units_skipped=int(n_units_skipped),
         rotation_test_mode=(config.rotation_test_mode if config else (ok_results[0].rotation_test_mode if ok_results else "contrast")),
+        rotation_reference_mode=(
+            config.rotation_reference_mode if config else (ok_results[0].rotation_reference_mode if ok_results else "bulge_other")
+        ),
+        central_reference_radius_fraction=(config.central_reference_radius_fraction if config else 0.25),
         disk_vsigma_ratio_min=(config.disk_vsigma_ratio_min if config else 1.10),
         center_velocity=(config.center_velocity if config else True),
         min_sigma_star=(config.min_sigma_star if config else 1.0),
@@ -408,7 +458,7 @@ def write_report_markdown(path: str | Path, report: KinematicSuccessReport) -> P
     path.parent.mkdir(parents=True, exist_ok=True)
     p = report.coherence_score_percentiles
     test_a_description = (
-        "Contraste mediano disco vs bulbo/other en V/sigma"
+        f"Contraste mediano disco vs {report.rotation_reference_mode} en V/sigma"
         if report.rotation_test_mode == "contrast"
         else "Correlacion disco-rotacion"
     )
@@ -421,6 +471,8 @@ def write_report_markdown(path: str | Path, report: KinematicSuccessReport) -> P
         ),
         f"Unidades omitidas: {report.n_units_skipped}",
         f"Modo Test A: {report.rotation_test_mode}",
+        f"Referencia Test A: {report.rotation_reference_mode}",
+        f"Radio central Test A: {report.central_reference_radius_fraction}",
         f"Velocidad centrada: {report.center_velocity}",
         f"Sigma minima para V/sigma: {report.min_sigma_star}",
         "",
@@ -483,6 +535,7 @@ TEST_A_DIAGNOSTIC_FIELDNAMES = [
     "test_a_rotation",
     "test_a_failure_mode",
     "rotation_test_mode",
+    "rotation_reference_mode",
     "velocity_center_median",
     "v_over_sigma_ratio",
     "v_over_sigma_disk_median",
@@ -630,7 +683,8 @@ def write_test_a_summary_by_global_vsigma_csv(path: str | Path, results: list[Ki
 def _format_result_line(result: KinematicChecks) -> str:
     return (
         f"| {result.canonical_id} | {result.view_id} | {result.sample_manga if result.sample_manga is not None else ''} "
-        f"| {result.test_a_rotation} | {result.v_over_sigma_ratio if result.v_over_sigma_ratio is not None else ''} "
+        f"| {result.test_a_rotation} | {result.rotation_reference_mode} "
+        f"| {result.v_over_sigma_ratio if result.v_over_sigma_ratio is not None else ''} "
         f"| {result.v_over_sigma_global_median if result.v_over_sigma_global_median is not None else ''} "
         f"| {result.n_disk_spaxels} | {result.n_reference_spaxels} | {result.test_a_failure_mode} |"
     )
@@ -668,12 +722,12 @@ def write_test_a_extreme_pass_fail_markdown(
     lines = [
         "# Test A diagnostics",
         "",
-        "Columns: canonical_id, view, sample_manga, Test A, V/sigma ratio, global V/sigma, disk spaxels, reference spaxels, reason.",
+        "Columns: canonical_id, view, sample_manga, Test A, reference, V/sigma ratio, global V/sigma, disk spaxels, reference spaxels, reason.",
         "",
         "## Severe FAIL",
         "",
-        "| canonical_id | view | sample | test_a | ratio | global_vsigma | disk_px | ref_px | reason |",
-        "|---|---:|---:|---|---:|---:|---:|---:|---|",
+        "| canonical_id | view | sample | test_a | reference | ratio | global_vsigma | disk_px | ref_px | reason |",
+        "|---|---:|---:|---|---|---:|---:|---:|---:|---|",
     ]
     lines.extend(_format_result_line(result) for result in severe_fail)
     lines.extend(
@@ -681,8 +735,8 @@ def write_test_a_extreme_pass_fail_markdown(
             "",
             "## Strong PASS",
             "",
-            "| canonical_id | view | sample | test_a | ratio | global_vsigma | disk_px | ref_px | reason |",
-            "|---|---:|---:|---|---:|---:|---:|---:|---|",
+            "| canonical_id | view | sample | test_a | reference | ratio | global_vsigma | disk_px | ref_px | reason |",
+            "|---|---:|---:|---|---|---:|---:|---:|---:|---|",
         ]
     )
     lines.extend(_format_result_line(result) for result in strong_pass)
@@ -691,8 +745,8 @@ def write_test_a_extreme_pass_fail_markdown(
             "",
             "## FAIL near threshold",
             "",
-            "| canonical_id | view | sample | test_a | ratio | global_vsigma | disk_px | ref_px | reason |",
-            "|---|---:|---:|---|---:|---:|---:|---:|---|",
+            "| canonical_id | view | sample | test_a | reference | ratio | global_vsigma | disk_px | ref_px | reason |",
+            "|---|---:|---:|---|---|---:|---:|---:|---:|---|",
         ]
     )
     lines.extend(_format_result_line(result) for result in near_threshold)

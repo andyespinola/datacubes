@@ -5,7 +5,7 @@ catalog-level coherence reports.
 
 ```bash
 python -m validation.run_kinematic_validation \
-  --matched-units /home/aespinola/matched_assets/matched_units.csv \
+  --matched-units /home/aespinola/Documents/pythonprojects/datacubes/matched_assets/matched_units.csv \
   --labels-dir /media/nuevo/structural_labels \
   --outdir /media/nuevo/structural_validations/kinematic \
   --dominant-class-threshold 0.50 \
@@ -17,6 +17,39 @@ By default Test A uses `--rotation-test contrast`: median `V/sigma` in
 disk-dominated spaxels must exceed the median in bulge/other-dominated
 spaxels by `--disk-vsigma-ratio-min` (default `1.10`). The older global
 Spearman test remains available with `--rotation-test spearman`.
+
+For Test A contrast, `--test-a-reference` selects the comparison population:
+
+- `bulge_other` keeps the original strict comparison against bulge or other.
+- `bulge` compares only against bulge-dominated spaxels.
+- `central` compares against central valid spaxels, independent of class labels.
+
+Example diagnostic reruns:
+
+```bash
+python -m validation.run_kinematic_validation \
+  --matched-units /home/aespinola/Documents/pythonprojects/datacubes/matched_assets/matched_units.csv \
+  --labels-dir /media/nuevo/structural_labels \
+  --outdir /media/nuevo/structural_validations/kinematic_bulge_ref \
+  --label-mode soft_mass \
+  --rotation-test contrast \
+  --test-a-reference bulge \
+  --dominant-class-threshold 0.50 \
+  --min-spaxels-for-test 30 \
+  --continue-on-error
+
+python -m validation.run_kinematic_validation \
+  --matched-units /home/aespinola/Documents/pythonprojects/datacubes/matched_assets/matched_units.csv \
+  --labels-dir /media/nuevo/structural_labels \
+  --outdir /media/nuevo/structural_validations/kinematic_central_ref \
+  --label-mode soft_mass \
+  --rotation-test contrast \
+  --test-a-reference central \
+  --central-reference-radius-fraction 0.25 \
+  --dominant-class-threshold 0.50 \
+  --min-spaxels-for-test 30 \
+  --continue-on-error
+```
 
 Optional h3/h4 products from `kinematic_moments` can be enabled with:
 
