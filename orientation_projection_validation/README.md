@@ -55,6 +55,18 @@ cd /home/andy/pythonprojects/datacubes/orientation_projection_validation
   --config default_config.json
 ```
 
+Para preparar solo las galaxias únicas que ya pasaron por
+`mangia_asset_matcher`:
+
+```bash
+cd /home/aespinola/Documents/pythonprojects/datacubes/orientation_projection_validation
+
+python build_projection_manifest.py \
+  --matched-units /home/andy/matched_assets/matched_units.csv \
+  --out data/projection_manifest_matched.csv \
+  --config default_config.json
+```
+
 Para iniciar la descarga de todas las galaxias en la máquina de descarga, guardando la cache pesada fuera del repo:
 
 ```bash

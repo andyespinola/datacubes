@@ -6,7 +6,6 @@ from pathlib import Path
 from statistics import median
 from typing import Iterable
 
-from astropy.io import fits
 import numpy as np
 
 
@@ -68,6 +67,8 @@ def build_projection_manifest(
     primary_factor: float = 1.5,
     secondary_factor: float = 2.5,
 ) -> list[ProjectionManifestRow]:
+    from astropy.io import fits
+
     data = fits.getdata(catalog_path, 1)
     groups: dict[tuple[int, int], list] = {}
     for row in data:
@@ -82,6 +83,70 @@ def build_projection_manifest(
         views = sorted({int(item["view"]) for item in items})
         n_star = max(int(item["n_star_part"]) for item in items)
         n_gas = max(int(item["n_gas_cell"]) for item in items)
+        re_kpc = float(median(re_values))
+        sample = _mode_int(sample_values)
+        rcov = rcov_from_sample(re_kpc, sample, primary_factor, secondary_factor)
+        rows.append(
+            ProjectionManifestRow(
+                galaxy_id=galaxy_id(snapshot, subhalo_id),
+                snapshot=snapshot,
+                subhalo_id=subhalo_id,
+                re_kpc=re_kpc,
+                sample_manga=sample,
+                ifu_design=max(ifu_values),
+                n_star_part=n_star,
+                n_gas_cell=n_gas,
+                source_rows=len(items),
+                views=";".join(str(view) for view in views),
+                rcov_kpc=rcov,
+                estimated_raw_mb=estimated_cutout_mb(n_star, n_gas),
+            )
+        )
+    return rows
+
+
+def _int_from_row(row: dict[str, str], name: str, default: int = 0) -> int:
+    value = (row.get(name) or "").strip()
+    return int(float(value)) if value else default
+
+
+def _float_from_row(row: dict[str, str], name: str, default: float = 0.0) -> float:
+    value = (row.get(name) or "").strip()
+    return float(value) if value else default
+
+
+def _order_from_row(row: dict[str, str], fallback: int) -> int:
+    value = (row.get("selection_rank") or "").strip()
+    return int(float(value)) if value else fallback
+
+
+def build_projection_manifest_from_matched(
+    matched_units_path: str | Path,
+    primary_factor: float = 1.5,
+    secondary_factor: float = 2.5,
+) -> list[ProjectionManifestRow]:
+    with Path(matched_units_path).open(newline="", encoding="utf-8") as handle:
+        matched_rows = list(csv.DictReader(handle))
+
+    groups: dict[tuple[int, int], list[tuple[int, dict[str, str]]]] = {}
+    for index, row in enumerate(matched_rows, start=1):
+        snapshot = _int_from_row(row, "snapshot")
+        subhalo_id = _int_from_row(row, "subhalo_id")
+        groups.setdefault((snapshot, subhalo_id), []).append((_order_from_row(row, index), row))
+
+    ordered_groups = sorted(
+        groups.items(),
+        key=lambda item: min(order for order, _row in item[1]),
+    )
+    rows: list[ProjectionManifestRow] = []
+    for (snapshot, subhalo_id), items_with_order in ordered_groups:
+        items = [row for _order, row in sorted(items_with_order, key=lambda item: item[0])]
+        re_values = [_float_from_row(item, "re_kpc") for item in items]
+        sample_values = [_int_from_row(item, "sample_manga") for item in items]
+        ifu_values = [_int_from_row(item, "ifu_design_catalog", _int_from_row(item, "cube_ifu_file")) for item in items]
+        views = sorted({_int_from_row(item, "view") for item in items})
+        n_star = max(_int_from_row(item, "n_star_part") for item in items)
+        n_gas = max(_int_from_row(item, "n_gas_cell") for item in items)
         re_kpc = float(median(re_values))
         sample = _mode_int(sample_values)
         rcov = rcov_from_sample(re_kpc, sample, primary_factor, secondary_factor)
@@ -172,4 +237,3 @@ def select_pilot_rows(rows: list[ProjectionManifestRow], max_galaxies: int) -> l
         if len(selected) >= max_galaxies:
             break
     return selected
-
