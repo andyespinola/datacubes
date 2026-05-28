@@ -33,7 +33,7 @@ def synthetic_unit(with_bar: bool = True, with_moments: bool = False) -> Kinemat
     y[4] = np.clip(1.0 - np.sum(y[:4], axis=0), 0.0, 1.0)
     y /= np.clip(np.sum(y, axis=0, keepdims=True), 1e-6, None)
 
-    v = np.abs(xx - 5.5).astype(np.float32) * 35.0
+    v = (xx - 5.5).astype(np.float32) * 35.0
     sigma = np.full((h, w), 90.0, dtype=np.float32)
     sigma[bulge] = 180.0
     sigma[bar] = 135.0
@@ -61,6 +61,7 @@ class KinematicValidationTests(unittest.TestCase):
 
         self.assertEqual(result.test_a_rotation, "PASS")
         self.assertEqual(result.rotation_test_mode, "contrast")
+        self.assertAlmostEqual(result.velocity_center_median, 0.0, places=5)
         self.assertGreater(result.v_over_sigma_ratio, 1.10)
         self.assertEqual(result.test_b_dispersion, "PASS")
         self.assertEqual(result.test_c_bar_sigma, "N/A")
@@ -99,6 +100,26 @@ class KinematicValidationTests(unittest.TestCase):
 
         self.assertEqual(result.rotation_test_mode, "spearman")
         self.assertIsNotNone(result.rho_disk)
+        self.assertEqual(result.test_a_rotation, "PASS")
+
+    def test_velocity_is_centered_before_vsigma(self) -> None:
+        unit = synthetic_unit(with_bar=False)
+        shifted = KinematicValidationInput(
+            unit_id=unit.unit_id,
+            galaxy_id=unit.galaxy_id,
+            canonical_id=unit.canonical_id,
+            view_id=unit.view_id,
+            y_int=unit.y_int,
+            m_val=unit.m_val,
+            v_star=unit.v_star + 32000.0,
+            sigma_star=unit.sigma_star,
+            r_bar=unit.r_bar,
+        )
+
+        result = validate_kinematic_unit(shifted, KinematicValidationConfig(min_spaxels_for_test=10))
+
+        self.assertGreater(result.velocity_center_median, 30000.0)
+        self.assertLess(result.v_over_sigma_global_median, 2.0)
         self.assertEqual(result.test_a_rotation, "PASS")
 
     def test_cli_writes_expected_outputs_from_npz_maps(self) -> None:

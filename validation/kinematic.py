@@ -36,6 +36,8 @@ class KinematicMomentMaps:
 class KinematicValidationConfig:
     dominant_class_threshold: float = 0.70
     epsilon: float = 1e-8
+    center_velocity: bool = True
+    min_sigma_star: float = 1.0
     rotation_test_mode: RotationTestMode = "contrast"
     rho_disk_min: float = 0.20
     disk_vsigma_ratio_min: float = 1.10
@@ -88,6 +90,7 @@ class KinematicChecks:
     passes: bool
     h3h4_used: bool
     sample_manga: int | None = None
+    velocity_center_median: float | None = None
     v_over_sigma_global_median: float | None = None
     n_valid_spaxels: int = 0
     n_disk_spaxels: int = 0
@@ -119,6 +122,8 @@ class KinematicSuccessReport:
     n_units_skipped: int = 0
     rotation_test_mode: str = "contrast"
     disk_vsigma_ratio_min: float = 1.10
+    center_velocity: bool = True
+    min_sigma_star: float = 1.0
 
 
 def _spearman(x: np.ndarray, y: np.ndarray) -> float:
@@ -190,10 +195,13 @@ def validate_kinematic_unit(
             f"y_int={y_int.shape}, m_val={m_val.shape}, v_star={v_star.shape}, sigma_star={sigma_star.shape}"
         )
 
-    finite = np.isfinite(v_star) & np.isfinite(sigma_star)
+    finite = np.isfinite(v_star) & np.isfinite(sigma_star) & (np.abs(sigma_star) >= float(config.min_sigma_star))
     valid = m_val & finite
     min_spaxels = int(config.min_spaxels_for_test)
-    v_over_sigma = np.abs(v_star) / (np.abs(sigma_star) + float(config.epsilon))
+    velocity_center = _median_or_none(v_star[valid]) if config.center_velocity else 0.0
+    velocity_center = 0.0 if velocity_center is None else velocity_center
+    v_for_rotation = v_star - float(velocity_center)
+    v_over_sigma = np.abs(v_for_rotation) / (np.abs(sigma_star) + float(config.epsilon))
     bulge_mask = _dominant_mask(y_int, 0, valid, config.dominant_class_threshold)
     disk_mask = _dominant_mask(y_int, 1, valid, config.dominant_class_threshold)
     bar_mask = _dominant_mask(y_int, 2, valid, config.dominant_class_threshold)
@@ -299,6 +307,7 @@ def validate_kinematic_unit(
         passes=passes,
         h3h4_used=h3h4_used,
         sample_manga=unit.sample_manga,
+        velocity_center_median=float(velocity_center),
         v_over_sigma_global_median=v_over_sigma_global,
         n_valid_spaxels=n_valid_spaxels,
         n_disk_spaxels=n_disk_spaxels,
@@ -355,6 +364,8 @@ def build_success_report(
         n_units_skipped=int(n_units_skipped),
         rotation_test_mode=(config.rotation_test_mode if config else (ok_results[0].rotation_test_mode if ok_results else "contrast")),
         disk_vsigma_ratio_min=(config.disk_vsigma_ratio_min if config else 1.10),
+        center_velocity=(config.center_velocity if config else True),
+        min_sigma_star=(config.min_sigma_star if config else 1.0),
     )
 
 
@@ -410,6 +421,8 @@ def write_report_markdown(path: str | Path, report: KinematicSuccessReport) -> P
         ),
         f"Unidades omitidas: {report.n_units_skipped}",
         f"Modo Test A: {report.rotation_test_mode}",
+        f"Velocidad centrada: {report.center_velocity}",
+        f"Sigma minima para V/sigma: {report.min_sigma_star}",
         "",
         "## Porcentajes de exito por test",
         "",
@@ -470,6 +483,7 @@ TEST_A_DIAGNOSTIC_FIELDNAMES = [
     "test_a_rotation",
     "test_a_failure_mode",
     "rotation_test_mode",
+    "velocity_center_median",
     "v_over_sigma_ratio",
     "v_over_sigma_disk_median",
     "v_over_sigma_reference_median",

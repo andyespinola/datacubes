@@ -147,6 +147,8 @@ def run(args: argparse.Namespace) -> int:
 
     config = KinematicValidationConfig(
         dominant_class_threshold=args.dominant_class_threshold,
+        center_velocity=not args.no_center_velocity,
+        min_sigma_star=args.min_sigma_star,
         rotation_test_mode=args.rotation_test,
         rho_disk_min=args.rho_disk_min,
         disk_vsigma_ratio_min=args.disk_vsigma_ratio_min,
@@ -209,6 +211,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int, default=0, help="Maximo de filas a validar; 0=todas")
     parser.add_argument("--continue-on-error", action="store_true", help="Registra errores y continua")
     parser.add_argument("--dominant-class-threshold", type=float, default=0.70)
+    parser.add_argument("--no-center-velocity", action="store_true", help="Usa Vlos crudo sin restar la mediana del mapa valido")
+    parser.add_argument("--min-sigma-star", type=float, default=1.0, help="Sigma minima para incluir un spaxel en V/sigma")
     parser.add_argument("--rotation-test", choices=("contrast", "spearman"), default="contrast")
     parser.add_argument("--rho-disk-min", type=float, default=0.20)
     parser.add_argument("--disk-vsigma-ratio-min", type=float, default=1.10)
