@@ -159,6 +159,7 @@ def run(args: argparse.Namespace) -> int:
         bar_tolerance=args.bar_tolerance,
         rho_h3v_min=args.rho_h3v_min,
         min_spaxels_for_test=args.min_spaxels_for_test,
+        min_spaxels_test_b=args.min_spaxels_test_b,
     )
     results: list[KinematicChecks] = []
     for index, row in enumerate(rows, start=1):
@@ -235,6 +236,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--bar-tolerance", type=float, default=0.05)
     parser.add_argument("--rho-h3v-min", type=float, default=0.20)
     parser.add_argument("--min-spaxels-for-test", type=int, default=20)
+    parser.add_argument("--min-spaxels-test-b", type=int, default=10, help="Minimo de spaxels bulge y disk para Test B")
     return parser
 
 

@@ -92,6 +92,8 @@ def _validation_argv(args: argparse.Namespace, threshold: float, outdir: Path) -
         str(args.dominant_class_threshold),
         "--min-spaxels-for-test",
         str(args.min_spaxels_for_test),
+        "--min-spaxels-test-b",
+        str(args.min_spaxels_test_b),
         "--rotation-test",
         "contrast",
         "--test-a-reference",
@@ -138,6 +140,8 @@ def _write_summary_csv(path: Path, rows: list[dict[str, object]]) -> Path:
         "success_rate_overall",
         "n_applicable_test_b",
         "success_rate_test_b",
+        "min_spaxels_for_test",
+        "min_spaxels_test_b",
         "median_vsigma_ratio_applicable",
         "median_global_vsigma_applicable",
         "too_few_disk_spaxels",
@@ -222,6 +226,8 @@ def run(args: argparse.Namespace) -> int:
             "success_rate_overall": report.get("success_rate_overall"),
             "n_applicable_test_b": report.get("n_applicable_test_b"),
             "success_rate_test_b": report.get("success_rate_test_b"),
+            "min_spaxels_for_test": report.get("min_spaxels_for_test"),
+            "min_spaxels_test_b": report.get("min_spaxels_test_b"),
             **diagnostics,
         }
         rows.append(row)
@@ -243,6 +249,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--central-reference-radius-fraction", type=float, default=0.25)
     parser.add_argument("--dominant-class-threshold", type=float, default=0.50)
     parser.add_argument("--min-spaxels-for-test", type=int, default=30)
+    parser.add_argument("--min-spaxels-test-b", type=int, default=10)
     parser.add_argument("--min-sigma-star", type=float, default=1.0)
     parser.add_argument("--sigma-ratio-min", type=float, default=1.10)
     parser.add_argument("--bar-tolerance", type=float, default=0.05)

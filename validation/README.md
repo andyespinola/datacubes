@@ -10,6 +10,7 @@ python -m validation.run_kinematic_validation \
   --outdir /media/nuevo/structural_validations/kinematic \
   --dominant-class-threshold 0.50 \
   --min-spaxels-for-test 10 \
+  --min-spaxels-test-b 10 \
   --continue-on-error
 ```
 
@@ -17,6 +18,10 @@ By default Test A uses `--rotation-test contrast --test-a-reference central`:
 median `V/sigma` in disk-dominated spaxels must exceed the median in central
 valid spaxels by `--disk-vsigma-ratio-min` (default `1.10`). The older global
 Spearman test remains available with `--rotation-test spearman`.
+
+`--min-spaxels-for-test` controls Test A, C, and D. Test B has a separate
+minimum, `--min-spaxels-test-b` (default `10`), because bulge-dominated
+regions are often much smaller than disk or central regions.
 
 For Test A contrast, `--test-a-reference` selects the comparison population:
 
@@ -36,6 +41,7 @@ python -m validation.run_kinematic_validation \
   --test-a-reference bulge \
   --dominant-class-threshold 0.50 \
   --min-spaxels-for-test 30 \
+  --min-spaxels-test-b 10 \
   --continue-on-error
 
 python -m validation.run_kinematic_validation \
@@ -48,6 +54,7 @@ python -m validation.run_kinematic_validation \
   --central-reference-radius-fraction 0.25 \
   --dominant-class-threshold 0.50 \
   --min-spaxels-for-test 30 \
+  --min-spaxels-test-b 10 \
   --continue-on-error
 ```
 
@@ -64,6 +71,7 @@ python -m validation.run_test_a_sensitivity \
   --central-reference-radius-fraction 0.25 \
   --dominant-class-threshold 0.50 \
   --min-spaxels-for-test 30 \
+  --min-spaxels-test-b 10 \
   --continue-on-error
 ```
 

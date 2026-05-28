@@ -159,6 +159,17 @@ class KinematicValidationTests(unittest.TestCase):
         self.assertGreaterEqual(result.n_reference_spaxels, 10)
         self.assertEqual(result.test_a_rotation, "PASS")
 
+    def test_test_b_uses_its_own_spaxel_minimum(self) -> None:
+        result = validate_kinematic_unit(
+            contaminated_reference_unit(),
+            KinematicValidationConfig(min_spaxels_for_test=30, min_spaxels_test_b=10),
+        )
+
+        self.assertLess(result.n_bulge_spaxels, 30)
+        self.assertGreaterEqual(result.n_bulge_spaxels, 10)
+        self.assertGreaterEqual(result.n_disk_spaxels, 10)
+        self.assertEqual(result.test_b_dispersion, "PASS")
+
     def test_velocity_is_centered_before_vsigma(self) -> None:
         unit = synthetic_unit(with_bar=False)
         shifted = KinematicValidationInput(

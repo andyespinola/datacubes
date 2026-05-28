@@ -48,6 +48,7 @@ class KinematicValidationConfig:
     bar_tolerance: float = 0.05
     rho_h3v_min: float = 0.20
     min_spaxels_for_test: int = 20
+    min_spaxels_test_b: int = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +131,8 @@ class KinematicSuccessReport:
     disk_vsigma_ratio_min: float = 1.10
     center_velocity: bool = True
     min_sigma_star: float = 1.0
+    min_spaxels_for_test: int = 20
+    min_spaxels_test_b: int = 10
 
 
 def _spearman(x: np.ndarray, y: np.ndarray) -> float:
@@ -237,6 +240,7 @@ def validate_kinematic_unit(
     finite = np.isfinite(v_star) & np.isfinite(sigma_star) & (np.abs(sigma_star) >= float(config.min_sigma_star))
     valid = m_val & finite
     min_spaxels = int(config.min_spaxels_for_test)
+    min_spaxels_test_b = int(config.min_spaxels_test_b)
     velocity_center = _median_or_none(v_star[valid]) if config.center_velocity else 0.0
     velocity_center = 0.0 if velocity_center is None else velocity_center
     v_for_rotation = v_star - float(velocity_center)
@@ -292,7 +296,7 @@ def validate_kinematic_unit(
     sigma_bar = _median_or_none(sigma_star[bar_mask])
 
     sigma_ratio = None
-    if np.count_nonzero(bulge_mask) >= min_spaxels and np.count_nonzero(disk_mask) >= min_spaxels:
+    if np.count_nonzero(bulge_mask) >= min_spaxels_test_b and np.count_nonzero(disk_mask) >= min_spaxels_test_b:
         sigma_ratio = float(sigma_bulge / (sigma_disk + config.epsilon))
         test_b = _status(sigma_ratio >= config.sigma_ratio_min)
     else:
@@ -416,6 +420,8 @@ def build_success_report(
         disk_vsigma_ratio_min=(config.disk_vsigma_ratio_min if config else 1.10),
         center_velocity=(config.center_velocity if config else True),
         min_sigma_star=(config.min_sigma_star if config else 1.0),
+        min_spaxels_for_test=(config.min_spaxels_for_test if config else 20),
+        min_spaxels_test_b=(config.min_spaxels_test_b if config else 10),
     )
 
 
@@ -475,6 +481,8 @@ def write_report_markdown(path: str | Path, report: KinematicSuccessReport) -> P
         f"Radio central Test A: {report.central_reference_radius_fraction}",
         f"Velocidad centrada: {report.center_velocity}",
         f"Sigma minima para V/sigma: {report.min_sigma_star}",
+        f"Spaxels minimos Test A/C/D: {report.min_spaxels_for_test}",
+        f"Spaxels minimos Test B: {report.min_spaxels_test_b}",
         "",
         "## Porcentajes de exito por test",
         "",
