@@ -13,6 +13,7 @@ from scipy.stats import spearmanr
 
 
 Status = Literal["PASS", "FAIL", "N/A"]
+RotationTestMode = Literal["contrast", "spearman"]
 
 LABEL_CLASS_NAMES = ("bulge", "disk", "bar", "arm", "other")
 LABEL_CLASS_ALIASES = {
@@ -35,7 +36,9 @@ class KinematicMomentMaps:
 class KinematicValidationConfig:
     dominant_class_threshold: float = 0.70
     epsilon: float = 1e-8
+    rotation_test_mode: RotationTestMode = "contrast"
     rho_disk_min: float = 0.20
+    disk_vsigma_ratio_min: float = 1.10
     sigma_ratio_min: float = 1.10
     bar_tolerance: float = 0.05
     rho_h3v_min: float = 0.20
@@ -68,7 +71,11 @@ class KinematicChecks:
     test_b_dispersion: Status
     test_c_bar_sigma: Status
     test_d_h3_signature: Status
+    rotation_test_mode: str
     rho_disk: float | None
+    v_over_sigma_disk_median: float | None
+    v_over_sigma_reference_median: float | None
+    v_over_sigma_ratio: float | None
     sigma_ratio: float | None
     sigma_bulge_median: float | None
     sigma_disk_median: float | None
@@ -101,6 +108,8 @@ class KinematicSuccessReport:
     n_units_without_h3h4: int
     coherence_score_percentiles: dict[str, float]
     n_units_skipped: int = 0
+    rotation_test_mode: str = "contrast"
+    disk_vsigma_ratio_min: float = 1.10
 
 
 def _spearman(x: np.ndarray, y: np.ndarray) -> float:
@@ -119,6 +128,12 @@ def _median_or_none(values: np.ndarray) -> float | None:
     if values.size == 0:
         return None
     return float(np.nanmedian(values))
+
+
+def _ratio_or_none(numerator: float | None, denominator: float | None, epsilon: float) -> float | None:
+    if numerator is None or denominator is None:
+        return None
+    return float(numerator / (denominator + epsilon))
 
 
 def _status(pass_value: bool) -> Status:
@@ -156,17 +171,33 @@ def validate_kinematic_unit(
     valid = m_val & finite
     min_spaxels = int(config.min_spaxels_for_test)
     v_over_sigma = np.abs(v_star) / (np.abs(sigma_star) + float(config.epsilon))
+    bulge_mask = _dominant_mask(y_int, 0, valid, config.dominant_class_threshold)
+    disk_mask = _dominant_mask(y_int, 1, valid, config.dominant_class_threshold)
+    bar_mask = _dominant_mask(y_int, 2, valid, config.dominant_class_threshold)
+    other_mask = _dominant_mask(y_int, 4, valid, config.dominant_class_threshold)
+    hot_reference_mask = bulge_mask | other_mask
 
     rho_disk = None
     if np.count_nonzero(valid) >= min_spaxels:
         rho_disk = _spearman(y_int[1][valid], v_over_sigma[valid])
-        test_a = _status(rho_disk >= config.rho_disk_min)
-    else:
-        test_a = "N/A"
 
-    bulge_mask = _dominant_mask(y_int, 0, valid, config.dominant_class_threshold)
-    disk_mask = _dominant_mask(y_int, 1, valid, config.dominant_class_threshold)
-    bar_mask = _dominant_mask(y_int, 2, valid, config.dominant_class_threshold)
+    v_over_sigma_disk = _median_or_none(v_over_sigma[disk_mask])
+    v_over_sigma_reference = _median_or_none(v_over_sigma[hot_reference_mask])
+    v_over_sigma_ratio = _ratio_or_none(v_over_sigma_disk, v_over_sigma_reference, config.epsilon)
+
+    if config.rotation_test_mode == "spearman":
+        if rho_disk is None:
+            test_a = "N/A"
+        else:
+            test_a = _status(rho_disk >= config.rho_disk_min)
+    elif config.rotation_test_mode == "contrast":
+        if np.count_nonzero(disk_mask) >= min_spaxels and np.count_nonzero(hot_reference_mask) >= min_spaxels:
+            test_a = _status(float(v_over_sigma_ratio) >= config.disk_vsigma_ratio_min)
+        else:
+            test_a = "N/A"
+    else:
+        raise ValueError(f"Invalid rotation_test_mode={config.rotation_test_mode!r}")
+
     sigma_bulge = _median_or_none(sigma_star[bulge_mask])
     sigma_disk = _median_or_none(sigma_star[disk_mask])
     sigma_bar = _median_or_none(sigma_star[bar_mask])
@@ -216,7 +247,11 @@ def validate_kinematic_unit(
         test_b_dispersion=test_b,
         test_c_bar_sigma=test_c,
         test_d_h3_signature=test_d,
+        rotation_test_mode=config.rotation_test_mode,
         rho_disk=rho_disk,
+        v_over_sigma_disk_median=v_over_sigma_disk,
+        v_over_sigma_reference_median=v_over_sigma_reference,
+        v_over_sigma_ratio=v_over_sigma_ratio,
         sigma_ratio=sigma_ratio,
         sigma_bulge_median=sigma_bulge,
         sigma_disk_median=sigma_disk,
@@ -239,7 +274,11 @@ def _rate(results: list[KinematicChecks], attr: str) -> tuple[float, int]:
     return float(100.0 * sum(value == "PASS" for value in values) / len(values)), len(values)
 
 
-def build_success_report(results: list[KinematicChecks], n_units_skipped: int = 0) -> KinematicSuccessReport:
+def build_success_report(
+    results: list[KinematicChecks],
+    n_units_skipped: int = 0,
+    config: KinematicValidationConfig | None = None,
+) -> KinematicSuccessReport:
     ok_results = [result for result in results if result.status == "ok"]
     rate_a, n_a = _rate(ok_results, "test_a_rotation")
     rate_b, n_b = _rate(ok_results, "test_b_dispersion")
@@ -270,6 +309,8 @@ def build_success_report(results: list[KinematicChecks], n_units_skipped: int = 
         n_units_without_h3h4=sum(not result.h3h4_used for result in ok_results),
         coherence_score_percentiles=percentiles,
         n_units_skipped=int(n_units_skipped),
+        rotation_test_mode=(config.rotation_test_mode if config else (ok_results[0].rotation_test_mode if ok_results else "contrast")),
+        disk_vsigma_ratio_min=(config.disk_vsigma_ratio_min if config else 1.10),
     )
 
 
@@ -311,6 +352,11 @@ def write_report_markdown(path: str | Path, report: KinematicSuccessReport) -> P
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     p = report.coherence_score_percentiles
+    test_a_description = (
+        "Contraste mediano disco vs bulbo/other en V/sigma"
+        if report.rotation_test_mode == "contrast"
+        else "Correlacion disco-rotacion"
+    )
     lines = [
         "# Reporte de validacion cinematica",
         "",
@@ -319,12 +365,13 @@ def write_report_markdown(path: str | Path, report: KinematicSuccessReport) -> P
             f"({report.n_units_with_h3h4} con h3/h4, {report.n_units_without_h3h4} sin h3/h4)"
         ),
         f"Unidades omitidas: {report.n_units_skipped}",
+        f"Modo Test A: {report.rotation_test_mode}",
         "",
         "## Porcentajes de exito por test",
         "",
         "| Test | Descripcion | Aplicable a | Exito |",
         "|---|---|---:|---:|",
-        f"| A | Correlacion disco-rotacion | {report.n_applicable_test_a} unidades | {_fmt_rate(report.success_rate_test_a)} |",
+        f"| A | {test_a_description} | {report.n_applicable_test_a} unidades | {_fmt_rate(report.success_rate_test_a)} |",
         f"| B | Dispersion bulbo > disco | {report.n_applicable_test_b} unidades | {_fmt_rate(report.success_rate_test_b)} |",
         f"| C | Dispersion intermedia barra | {report.n_applicable_test_c} barradas | {_fmt_rate(report.success_rate_test_c)} |",
         f"| D | Firma h3 en barra | {report.n_applicable_test_d} barradas con h3/h4 | {_fmt_rate(report.success_rate_test_d)} |",

@@ -8,8 +8,15 @@ python -m validation.run_kinematic_validation \
   --matched-units /home/aespinola/matched_assets/matched_units.csv \
   --labels-dir /media/nuevo/structural_labels \
   --outdir /media/nuevo/structural_validations/kinematic \
+  --dominant-class-threshold 0.50 \
+  --min-spaxels-for-test 10 \
   --continue-on-error
 ```
+
+By default Test A uses `--rotation-test contrast`: median `V/sigma` in
+disk-dominated spaxels must exceed the median in bulge/other-dominated
+spaxels by `--disk-vsigma-ratio-min` (default `1.10`). The older global
+Spearman test remains available with `--rotation-test spearman`.
 
 Optional h3/h4 products from `kinematic_moments` can be enabled with:
 

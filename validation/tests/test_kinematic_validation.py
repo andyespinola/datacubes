@@ -60,6 +60,8 @@ class KinematicValidationTests(unittest.TestCase):
         result = validate_kinematic_unit(synthetic_unit(with_bar=False), KinematicValidationConfig(min_spaxels_for_test=10))
 
         self.assertEqual(result.test_a_rotation, "PASS")
+        self.assertEqual(result.rotation_test_mode, "contrast")
+        self.assertGreater(result.v_over_sigma_ratio, 1.10)
         self.assertEqual(result.test_b_dispersion, "PASS")
         self.assertEqual(result.test_c_bar_sigma, "N/A")
         self.assertEqual(result.test_d_h3_signature, "N/A")
@@ -88,6 +90,16 @@ class KinematicValidationTests(unittest.TestCase):
         self.assertEqual(report.n_units_total, 2)
         self.assertEqual(report.n_applicable_test_d, 1)
         self.assertEqual(report.success_rate_test_d, 100.0)
+
+    def test_spearman_rotation_mode_remains_available(self) -> None:
+        result = validate_kinematic_unit(
+            synthetic_unit(with_bar=False),
+            KinematicValidationConfig(rotation_test_mode="spearman", min_spaxels_for_test=10),
+        )
+
+        self.assertEqual(result.rotation_test_mode, "spearman")
+        self.assertIsNotNone(result.rho_disk)
+        self.assertEqual(result.test_a_rotation, "PASS")
 
     def test_cli_writes_expected_outputs_from_npz_maps(self) -> None:
         with tempfile.TemporaryDirectory(prefix="kin-val-cli-") as tmp:

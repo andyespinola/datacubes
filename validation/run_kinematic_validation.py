@@ -58,7 +58,11 @@ def _error_result(row: dict[str, str], labels_dir: Path, status: str, error: str
         test_b_dispersion="N/A",
         test_c_bar_sigma="N/A",
         test_d_h3_signature="N/A",
+        rotation_test_mode="",
         rho_disk=None,
+        v_over_sigma_disk_median=None,
+        v_over_sigma_reference_median=None,
+        v_over_sigma_ratio=None,
         sigma_ratio=None,
         sigma_bulge_median=None,
         sigma_disk_median=None,
@@ -131,7 +135,9 @@ def run(args: argparse.Namespace) -> int:
 
     config = KinematicValidationConfig(
         dominant_class_threshold=args.dominant_class_threshold,
+        rotation_test_mode=args.rotation_test,
         rho_disk_min=args.rho_disk_min,
+        disk_vsigma_ratio_min=args.disk_vsigma_ratio_min,
         sigma_ratio_min=args.sigma_ratio_min,
         bar_tolerance=args.bar_tolerance,
         rho_h3v_min=args.rho_h3v_min,
@@ -151,7 +157,7 @@ def run(args: argparse.Namespace) -> int:
             print(f"  skipped: {exc}", flush=True)
 
     skipped = sum(result.status != "ok" for result in results)
-    report = build_success_report(results, n_units_skipped=skipped)
+    report = build_success_report(results, n_units_skipped=skipped, config=config)
     unit_csv = write_unit_results_csv(outdir / "kinematic_validation_units.csv", results)
     report_json = write_report_json(outdir / "kinematic_validation_report.json", report)
     report_md = write_report_markdown(outdir / "kinematic_validation_report.md", report)
@@ -177,7 +183,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int, default=0, help="Maximo de filas a validar; 0=todas")
     parser.add_argument("--continue-on-error", action="store_true", help="Registra errores y continua")
     parser.add_argument("--dominant-class-threshold", type=float, default=0.70)
+    parser.add_argument("--rotation-test", choices=("contrast", "spearman"), default="contrast")
     parser.add_argument("--rho-disk-min", type=float, default=0.20)
+    parser.add_argument("--disk-vsigma-ratio-min", type=float, default=1.10)
     parser.add_argument("--sigma-ratio-min", type=float, default=1.10)
     parser.add_argument("--bar-tolerance", type=float, default=0.05)
     parser.add_argument("--rho-h3v-min", type=float, default=0.20)
