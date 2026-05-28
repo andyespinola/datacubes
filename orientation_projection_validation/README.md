@@ -34,7 +34,8 @@ Luego ejecutar la validación:
   --continue-on-error
 ```
 
-Y resumir resultados:
+Y resumir resultados. Este paso no regenera proyecciones; solo lee los
+`metrics.json` ya producidos y crea un CSV más un reporte Markdown concentrado:
 
 ```bash
 /home/andy/pythonprojects/datacubes/.venv/bin/python summarize_metrics.py \
@@ -94,7 +95,8 @@ cd /home/aespinola/Documents/pythonprojects/datacubes/orientation_projection_val
 
 python summarize_metrics.py \
   --metrics-glob "/media/nuevo/orientation_projection_validation/outputs_matched/*/metrics.json" \
-  --out /media/nuevo/orientation_projection_validation/catalog_interorientation_summary_matched.csv
+  --out /media/nuevo/orientation_projection_validation/catalog_interorientation_summary_matched.csv \
+  --report /media/nuevo/orientation_projection_validation/catalog_interorientation_summary_matched.md
 ```
 
 Para iniciar la descarga de todas las galaxias en la máquina de descarga, guardando la cache pesada fuera del repo:
