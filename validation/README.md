@@ -30,3 +30,8 @@ Outputs:
 - `kinematic_validation_report.json`
 - `kinematic_validation_report.md`
 - `coherence_score_histogram.png`
+- `test_a_diagnostics.csv`
+- `test_a_summary_by_view.csv`
+- `test_a_summary_by_sample.csv`
+- `test_a_summary_by_global_vsigma.csv`
+- `test_a_extreme_pass_fail.md`

@@ -169,6 +169,10 @@ class KinematicValidationTests(unittest.TestCase):
             self.assertTrue((outdir / "kinematic_validation_report.json").exists())
             self.assertTrue((outdir / "kinematic_validation_report.md").exists())
             self.assertTrue((outdir / "coherence_score_histogram.png").exists())
+            self.assertTrue((outdir / "test_a_diagnostics.csv").exists())
+            self.assertTrue((outdir / "test_a_summary_by_view.csv").exists())
+            self.assertTrue((outdir / "test_a_summary_by_global_vsigma.csv").exists())
+            self.assertTrue((outdir / "test_a_extreme_pass_fail.md").exists())
 
 
 if __name__ == "__main__":

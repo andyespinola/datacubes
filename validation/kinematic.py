@@ -59,6 +59,7 @@ class KinematicValidationInput:
     kinematic_moments: KinematicMomentMaps | None = None
     label_path: str = ""
     maps2d_path: str = ""
+    sample_manga: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +87,14 @@ class KinematicChecks:
     coherence_score: float
     passes: bool
     h3h4_used: bool
+    sample_manga: int | None = None
+    v_over_sigma_global_median: float | None = None
+    n_valid_spaxels: int = 0
+    n_disk_spaxels: int = 0
+    n_reference_spaxels: int = 0
+    n_bulge_spaxels: int = 0
+    n_other_spaxels: int = 0
+    test_a_failure_mode: str = ""
     label_path: str = ""
     maps2d_path: str = ""
     status: str = "ok"
@@ -140,6 +149,20 @@ def _status(pass_value: bool) -> Status:
     return "PASS" if pass_value else "FAIL"
 
 
+def _test_a_failure_mode(status: Status, mode: str, disk_count: int, reference_count: int, min_spaxels: int) -> str:
+    if status == "PASS":
+        return ""
+    if mode == "contrast":
+        if disk_count < min_spaxels:
+            return "too_few_disk_spaxels"
+        if reference_count < min_spaxels:
+            return "too_few_reference_spaxels"
+        return "low_disk_vsigma_contrast" if status == "FAIL" else "not_applicable"
+    if mode == "spearman":
+        return "low_disk_vsigma_spearman" if status == "FAIL" else "not_applicable"
+    return "unknown"
+
+
 def _score(statuses: Iterable[Status]) -> tuple[int, int, float, bool]:
     applicable = [status for status in statuses if status != "N/A"]
     n_applicable = len(applicable)
@@ -176,11 +199,17 @@ def validate_kinematic_unit(
     bar_mask = _dominant_mask(y_int, 2, valid, config.dominant_class_threshold)
     other_mask = _dominant_mask(y_int, 4, valid, config.dominant_class_threshold)
     hot_reference_mask = bulge_mask | other_mask
+    n_valid_spaxels = int(np.count_nonzero(valid))
+    n_disk_spaxels = int(np.count_nonzero(disk_mask))
+    n_reference_spaxels = int(np.count_nonzero(hot_reference_mask))
+    n_bulge_spaxels = int(np.count_nonzero(bulge_mask))
+    n_other_spaxels = int(np.count_nonzero(other_mask))
 
     rho_disk = None
-    if np.count_nonzero(valid) >= min_spaxels:
+    if n_valid_spaxels >= min_spaxels:
         rho_disk = _spearman(y_int[1][valid], v_over_sigma[valid])
 
+    v_over_sigma_global = _median_or_none(v_over_sigma[valid])
     v_over_sigma_disk = _median_or_none(v_over_sigma[disk_mask])
     v_over_sigma_reference = _median_or_none(v_over_sigma[hot_reference_mask])
     v_over_sigma_ratio = _ratio_or_none(v_over_sigma_disk, v_over_sigma_reference, config.epsilon)
@@ -197,6 +226,13 @@ def validate_kinematic_unit(
             test_a = "N/A"
     else:
         raise ValueError(f"Invalid rotation_test_mode={config.rotation_test_mode!r}")
+    test_a_failure_mode = _test_a_failure_mode(
+        test_a,
+        config.rotation_test_mode,
+        n_disk_spaxels,
+        n_reference_spaxels,
+        min_spaxels,
+    )
 
     sigma_bulge = _median_or_none(sigma_star[bulge_mask])
     sigma_disk = _median_or_none(sigma_star[disk_mask])
@@ -262,6 +298,14 @@ def validate_kinematic_unit(
         coherence_score=coherence_score,
         passes=passes,
         h3h4_used=h3h4_used,
+        sample_manga=unit.sample_manga,
+        v_over_sigma_global_median=v_over_sigma_global,
+        n_valid_spaxels=n_valid_spaxels,
+        n_disk_spaxels=n_disk_spaxels,
+        n_reference_spaxels=n_reference_spaxels,
+        n_bulge_spaxels=n_bulge_spaxels,
+        n_other_spaxels=n_other_spaxels,
+        test_a_failure_mode=test_a_failure_mode,
         label_path=unit.label_path,
         maps2d_path=unit.maps2d_path,
     )
@@ -414,6 +458,238 @@ def write_score_histogram(path: str | Path, results: list[KinematicChecks]) -> P
     fig.tight_layout()
     fig.savefig(path, dpi=140)
     plt.close(fig)
+    return path
+
+
+TEST_A_DIAGNOSTIC_FIELDNAMES = [
+    "unit_id",
+    "galaxy_id",
+    "canonical_id",
+    "view_id",
+    "sample_manga",
+    "test_a_rotation",
+    "test_a_failure_mode",
+    "rotation_test_mode",
+    "v_over_sigma_ratio",
+    "v_over_sigma_disk_median",
+    "v_over_sigma_reference_median",
+    "v_over_sigma_global_median",
+    "rho_disk",
+    "n_valid_spaxels",
+    "n_disk_spaxels",
+    "n_reference_spaxels",
+    "n_bulge_spaxels",
+    "n_other_spaxels",
+    "label_path",
+    "maps2d_path",
+]
+
+
+def _test_a_diagnostic_row(result: KinematicChecks) -> dict[str, object]:
+    return {field: getattr(result, field) for field in TEST_A_DIAGNOSTIC_FIELDNAMES}
+
+
+def write_test_a_diagnostics_csv(path: str | Path, results: list[KinematicChecks]) -> Path:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=TEST_A_DIAGNOSTIC_FIELDNAMES)
+        writer.writeheader()
+        for result in results:
+            if result.status != "ok":
+                continue
+            writer.writerow(_json_safe(_test_a_diagnostic_row(result)))
+    return path
+
+
+def _finite_values(results: list[KinematicChecks], attr: str) -> list[float]:
+    values = []
+    for result in results:
+        value = getattr(result, attr)
+        if value is not None and np.isfinite(value):
+            values.append(float(value))
+    return values
+
+
+def _median_value(results: list[KinematicChecks], attr: str) -> float | None:
+    values = _finite_values(results, attr)
+    return float(np.nanmedian(values)) if values else None
+
+
+def _success_rate(results: list[KinematicChecks]) -> tuple[float | None, int, int]:
+    applicable = [result for result in results if result.test_a_rotation in ("PASS", "FAIL")]
+    if not applicable:
+        return None, 0, 0
+    passed = sum(result.test_a_rotation == "PASS" for result in applicable)
+    return float(100.0 * passed / len(applicable)), len(applicable), passed
+
+
+def _summary_row(group_name: str, results: list[KinematicChecks]) -> dict[str, object]:
+    rate, applicable, passed = _success_rate(results)
+    return {
+        "group": group_name,
+        "n_units": len(results),
+        "n_applicable": applicable,
+        "n_pass": passed,
+        "success_rate": rate,
+        "n_fail": sum(result.test_a_rotation == "FAIL" for result in results),
+        "n_na": sum(result.test_a_rotation == "N/A" for result in results),
+        "median_vsigma_ratio": _median_value(results, "v_over_sigma_ratio"),
+        "median_global_vsigma": _median_value(results, "v_over_sigma_global_median"),
+        "median_disk_spaxels": _median_value(results, "n_disk_spaxels"),
+        "median_reference_spaxels": _median_value(results, "n_reference_spaxels"),
+        "too_few_disk_spaxels": sum(result.test_a_failure_mode == "too_few_disk_spaxels" for result in results),
+        "too_few_reference_spaxels": sum(result.test_a_failure_mode == "too_few_reference_spaxels" for result in results),
+        "low_disk_vsigma_contrast": sum(result.test_a_failure_mode == "low_disk_vsigma_contrast" for result in results),
+    }
+
+
+def _write_summary_csv(path: str | Path, rows: list[dict[str, object]]) -> Path:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = [
+        "group",
+        "n_units",
+        "n_applicable",
+        "n_pass",
+        "success_rate",
+        "n_fail",
+        "n_na",
+        "median_vsigma_ratio",
+        "median_global_vsigma",
+        "median_disk_spaxels",
+        "median_reference_spaxels",
+        "too_few_disk_spaxels",
+        "too_few_reference_spaxels",
+        "low_disk_vsigma_contrast",
+    ]
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: _json_safe(row.get(field, "")) for field in fieldnames})
+    return path
+
+
+def write_test_a_summary_by_view_csv(path: str | Path, results: list[KinematicChecks]) -> Path:
+    ok_results = [result for result in results if result.status == "ok"]
+    views = sorted({int(result.view_id) for result in ok_results})
+    rows = [_summary_row(str(view), [result for result in ok_results if int(result.view_id) == view]) for view in views]
+    return _write_summary_csv(path, rows)
+
+
+def write_test_a_summary_by_sample_csv(path: str | Path, results: list[KinematicChecks]) -> Path:
+    ok_results = [result for result in results if result.status == "ok"]
+    samples = sorted({result.sample_manga for result in ok_results if result.sample_manga is not None})
+    rows = [_summary_row(str(sample), [result for result in ok_results if result.sample_manga == sample]) for sample in samples]
+    return _write_summary_csv(path, rows)
+
+
+def _vsigma_bin(value: float | None) -> str:
+    if value is None or not np.isfinite(value):
+        return "missing"
+    bins = [
+        (0.25, "0.00-0.25"),
+        (0.50, "0.25-0.50"),
+        (0.75, "0.50-0.75"),
+        (1.00, "0.75-1.00"),
+        (1.50, "1.00-1.50"),
+        (2.00, "1.50-2.00"),
+    ]
+    for limit, label in bins:
+        if value < limit:
+            return label
+    return "2.00+"
+
+
+def write_test_a_summary_by_global_vsigma_csv(path: str | Path, results: list[KinematicChecks]) -> Path:
+    ok_results = [result for result in results if result.status == "ok"]
+    labels = ["missing", "0.00-0.25", "0.25-0.50", "0.50-0.75", "0.75-1.00", "1.00-1.50", "1.50-2.00", "2.00+"]
+    rows = []
+    for label in labels:
+        subset = [result for result in ok_results if _vsigma_bin(result.v_over_sigma_global_median) == label]
+        if subset:
+            rows.append(_summary_row(label, subset))
+    return _write_summary_csv(path, rows)
+
+
+def _format_result_line(result: KinematicChecks) -> str:
+    return (
+        f"| {result.canonical_id} | {result.view_id} | {result.sample_manga if result.sample_manga is not None else ''} "
+        f"| {result.test_a_rotation} | {result.v_over_sigma_ratio if result.v_over_sigma_ratio is not None else ''} "
+        f"| {result.v_over_sigma_global_median if result.v_over_sigma_global_median is not None else ''} "
+        f"| {result.n_disk_spaxels} | {result.n_reference_spaxels} | {result.test_a_failure_mode} |"
+    )
+
+
+def write_test_a_extreme_pass_fail_markdown(
+    path: str | Path,
+    results: list[KinematicChecks],
+    limit: int = 15,
+    ratio_threshold: float = 1.10,
+) -> Path:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ok_results = [result for result in results if result.status == "ok"]
+    finite_ratio = [result for result in ok_results if result.v_over_sigma_ratio is not None and np.isfinite(result.v_over_sigma_ratio)]
+    severe_fail = sorted(
+        [result for result in finite_ratio if result.test_a_rotation == "FAIL"],
+        key=lambda result: float(result.v_over_sigma_ratio),
+    )[:limit]
+    strong_pass = sorted(
+        [result for result in finite_ratio if result.test_a_rotation == "PASS"],
+        key=lambda result: float(result.v_over_sigma_ratio),
+        reverse=True,
+    )[:limit]
+    near_threshold = sorted(
+        [result for result in finite_ratio if result.test_a_rotation == "FAIL"],
+        key=lambda result: abs(float(result.v_over_sigma_ratio) - float(ratio_threshold)),
+    )[:limit]
+    na_reasons: dict[str, int] = {}
+    for result in ok_results:
+        if result.test_a_rotation == "N/A":
+            key = result.test_a_failure_mode or "not_applicable"
+            na_reasons[key] = na_reasons.get(key, 0) + 1
+
+    lines = [
+        "# Test A diagnostics",
+        "",
+        "Columns: canonical_id, view, sample_manga, Test A, V/sigma ratio, global V/sigma, disk spaxels, reference spaxels, reason.",
+        "",
+        "## Severe FAIL",
+        "",
+        "| canonical_id | view | sample | test_a | ratio | global_vsigma | disk_px | ref_px | reason |",
+        "|---|---:|---:|---|---:|---:|---:|---:|---|",
+    ]
+    lines.extend(_format_result_line(result) for result in severe_fail)
+    lines.extend(
+        [
+            "",
+            "## Strong PASS",
+            "",
+            "| canonical_id | view | sample | test_a | ratio | global_vsigma | disk_px | ref_px | reason |",
+            "|---|---:|---:|---|---:|---:|---:|---:|---|",
+        ]
+    )
+    lines.extend(_format_result_line(result) for result in strong_pass)
+    lines.extend(
+        [
+            "",
+            "## FAIL near threshold",
+            "",
+            "| canonical_id | view | sample | test_a | ratio | global_vsigma | disk_px | ref_px | reason |",
+            "|---|---:|---:|---|---:|---:|---:|---:|---|",
+        ]
+    )
+    lines.extend(_format_result_line(result) for result in near_threshold)
+    lines.extend(["", "## N/A reasons", ""])
+    if na_reasons:
+        for reason, count in sorted(na_reasons.items()):
+            lines.append(f"- {reason}: {count}")
+    else:
+        lines.append("- none")
+    lines.append("")
+    path.write_text("\n".join(lines), encoding="utf-8")
     return path
 
 

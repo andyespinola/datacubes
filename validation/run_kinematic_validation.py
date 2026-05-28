@@ -19,6 +19,11 @@ from .kinematic import (
     write_report_json,
     write_report_markdown,
     write_score_histogram,
+    write_test_a_diagnostics_csv,
+    write_test_a_extreme_pass_fail_markdown,
+    write_test_a_summary_by_global_vsigma_csv,
+    write_test_a_summary_by_sample_csv,
+    write_test_a_summary_by_view_csv,
     write_unit_results_csv,
 )
 
@@ -44,6 +49,11 @@ def _kinematics_path(kinematics_dir: Path | None, row: dict[str, str]) -> Path |
         if candidate.exists():
             return candidate
     return None
+
+
+def _optional_int(row: dict[str, str], name: str) -> int | None:
+    value = (row.get(name) or "").strip()
+    return int(float(value)) if value else None
 
 
 def _error_result(row: dict[str, str], labels_dir: Path, status: str, error: str) -> KinematicChecks:
@@ -73,6 +83,7 @@ def _error_result(row: dict[str, str], labels_dir: Path, status: str, error: str
         coherence_score=float("nan"),
         passes=False,
         h3h4_used=False,
+        sample_manga=_optional_int(row, "sample_manga"),
         label_path=str(_labels_base(labels_dir, canonical_id).with_suffix(".labels.npz")),
         maps2d_path=row.get("maps2d_path", ""),
         status=status,
@@ -115,6 +126,7 @@ def _validate_row(
         kinematic_moments=moments,
         label_path=str(label_path),
         maps2d_path=row.get("maps2d_path", ""),
+        sample_manga=_optional_int(row, "sample_manga"),
     )
     return validate_kinematic_unit(unit, config)
 
@@ -162,11 +174,25 @@ def run(args: argparse.Namespace) -> int:
     report_json = write_report_json(outdir / "kinematic_validation_report.json", report)
     report_md = write_report_markdown(outdir / "kinematic_validation_report.md", report)
     histogram = write_score_histogram(outdir / "coherence_score_histogram.png", results)
+    test_a_diagnostics = write_test_a_diagnostics_csv(outdir / "test_a_diagnostics.csv", results)
+    test_a_by_view = write_test_a_summary_by_view_csv(outdir / "test_a_summary_by_view.csv", results)
+    test_a_by_sample = write_test_a_summary_by_sample_csv(outdir / "test_a_summary_by_sample.csv", results)
+    test_a_by_global_vsigma = write_test_a_summary_by_global_vsigma_csv(outdir / "test_a_summary_by_global_vsigma.csv", results)
+    test_a_extremes = write_test_a_extreme_pass_fail_markdown(
+        outdir / "test_a_extreme_pass_fail.md",
+        results,
+        ratio_threshold=args.disk_vsigma_ratio_min,
+    )
     summary = {
         "unit_csv": str(unit_csv),
         "report_json": str(report_json),
         "report_md": str(report_md),
         "histogram": str(histogram),
+        "test_a_diagnostics": str(test_a_diagnostics),
+        "test_a_summary_by_view": str(test_a_by_view),
+        "test_a_summary_by_sample": str(test_a_by_sample),
+        "test_a_summary_by_global_vsigma": str(test_a_by_global_vsigma),
+        "test_a_extreme_pass_fail": str(test_a_extremes),
         "report": json.loads(report_json.read_text(encoding="utf-8")),
     }
     print(json.dumps(summary, indent=2, sort_keys=True))
