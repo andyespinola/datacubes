@@ -87,7 +87,7 @@ class KinematicValidationTests(unittest.TestCase):
 
         self.assertEqual(result.test_a_rotation, "PASS")
         self.assertEqual(result.rotation_test_mode, "contrast")
-        self.assertEqual(result.rotation_reference_mode, "bulge_other")
+        self.assertEqual(result.rotation_reference_mode, "central")
         self.assertAlmostEqual(result.velocity_center_median, 0.0, places=5)
         self.assertGreater(result.v_over_sigma_ratio, 1.10)
         self.assertEqual(result.test_b_dispersion, "PASS")
@@ -131,14 +131,17 @@ class KinematicValidationTests(unittest.TestCase):
 
     def test_bulge_reference_excludes_other_contamination(self) -> None:
         unit = contaminated_reference_unit()
-        default_result = validate_kinematic_unit(unit, KinematicValidationConfig(min_spaxels_for_test=10))
+        bulge_other_result = validate_kinematic_unit(
+            unit,
+            KinematicValidationConfig(rotation_reference_mode="bulge_other", min_spaxels_for_test=10),
+        )
         bulge_result = validate_kinematic_unit(
             unit,
             KinematicValidationConfig(rotation_reference_mode="bulge", min_spaxels_for_test=10),
         )
 
-        self.assertEqual(default_result.test_a_rotation, "FAIL")
-        self.assertGreater(default_result.n_other_spaxels, default_result.n_bulge_spaxels)
+        self.assertEqual(bulge_other_result.test_a_rotation, "FAIL")
+        self.assertGreater(bulge_other_result.n_other_spaxels, bulge_other_result.n_bulge_spaxels)
         self.assertEqual(bulge_result.test_a_rotation, "PASS")
         self.assertEqual(bulge_result.n_reference_spaxels, bulge_result.n_bulge_spaxels)
 

@@ -40,7 +40,7 @@ class KinematicValidationConfig:
     center_velocity: bool = True
     min_sigma_star: float = 1.0
     rotation_test_mode: RotationTestMode = "contrast"
-    rotation_reference_mode: RotationReferenceMode = "bulge_other"
+    rotation_reference_mode: RotationReferenceMode = "central"
     central_reference_radius_fraction: float = 0.25
     rho_disk_min: float = 0.20
     disk_vsigma_ratio_min: float = 1.10
@@ -125,7 +125,7 @@ class KinematicSuccessReport:
     coherence_score_percentiles: dict[str, float]
     n_units_skipped: int = 0
     rotation_test_mode: str = "contrast"
-    rotation_reference_mode: str = "bulge_other"
+    rotation_reference_mode: str = "central"
     central_reference_radius_fraction: float = 0.25
     disk_vsigma_ratio_min: float = 1.10
     center_velocity: bool = True
@@ -410,7 +410,7 @@ def build_success_report(
         n_units_skipped=int(n_units_skipped),
         rotation_test_mode=(config.rotation_test_mode if config else (ok_results[0].rotation_test_mode if ok_results else "contrast")),
         rotation_reference_mode=(
-            config.rotation_reference_mode if config else (ok_results[0].rotation_reference_mode if ok_results else "bulge_other")
+            config.rotation_reference_mode if config else (ok_results[0].rotation_reference_mode if ok_results else "central")
         ),
         central_reference_radius_fraction=(config.central_reference_radius_fraction if config else 0.25),
         disk_vsigma_ratio_min=(config.disk_vsigma_ratio_min if config else 1.10),

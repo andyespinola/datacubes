@@ -13,16 +13,16 @@ python -m validation.run_kinematic_validation \
   --continue-on-error
 ```
 
-By default Test A uses `--rotation-test contrast`: median `V/sigma` in
-disk-dominated spaxels must exceed the median in bulge/other-dominated
-spaxels by `--disk-vsigma-ratio-min` (default `1.10`). The older global
+By default Test A uses `--rotation-test contrast --test-a-reference central`:
+median `V/sigma` in disk-dominated spaxels must exceed the median in central
+valid spaxels by `--disk-vsigma-ratio-min` (default `1.10`). The older global
 Spearman test remains available with `--rotation-test spearman`.
 
 For Test A contrast, `--test-a-reference` selects the comparison population:
 
-- `bulge_other` keeps the original strict comparison against bulge or other.
+- `central` is the primary validation mode for the 500-unit run.
 - `bulge` compares only against bulge-dominated spaxels.
-- `central` compares against central valid spaxels, independent of class labels.
+- `bulge_other` keeps the original strict diagnostic comparison against bulge or other.
 
 Example diagnostic reruns:
 

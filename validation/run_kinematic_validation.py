@@ -220,7 +220,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--test-a-reference",
         choices=("bulge_other", "bulge", "central"),
-        default="bulge_other",
+        default="central",
         help="Referencia para Test A en modo contrast",
     )
     parser.add_argument(
