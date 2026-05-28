@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import argparse
 import os
+from pathlib import Path
+import sys
 import time
+
+
+PROJECT_DIR = Path(__file__).resolve().parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
 
 from orientation_validation.download import download_row_assets, ensure_morphology_catalog
 from orientation_validation.env import load_env_file

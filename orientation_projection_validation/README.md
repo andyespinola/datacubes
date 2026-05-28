@@ -55,16 +55,46 @@ cd /home/andy/pythonprojects/datacubes/orientation_projection_validation
   --config default_config.json
 ```
 
-Para preparar solo las galaxias únicas que ya pasaron por
-`mangia_asset_matcher`:
+Para la validación de las 500 unidades macheadas, usar un manifiesto
+deduplicado por galaxia TNG única, generado desde `matched_units.csv`.
+Este es el manifiesto correcto para cruzar con la corrida cinemática; no
+usar `data/projection_manifest.csv` salvo que se quiera procesar el catálogo
+MaNGIA completo.
+
+```bash
+cd /home/aespinola/Documents/pythonprojects/datacubes
+
+python -m orientation_projection_validation.build_projection_manifest \
+  --matched-units /home/aespinola/Documents/pythonprojects/datacubes/matched_assets/matched_units.csv \
+  --out orientation_projection_validation/data/projection_manifest_matched.csv \
+  --config orientation_projection_validation/default_config.json
+```
+
+Con la selección actual de 500 unidades, este manifiesto debe contener 424
+galaxias únicas y `source_rows` debe sumar 500.
+
+Para correr la validación de proyecciones sobre esas galaxias:
+
+```bash
+cd /home/aespinola/Documents/pythonprojects/datacubes
+
+python -m orientation_projection_validation.run_projection_validation \
+  --manifest orientation_projection_validation/data/projection_manifest_matched.csv \
+  --cache /media/nuevo/tng_cutouts \
+  --morphology-catalog /media/nuevo/tng_cutouts/morphology/morphs_kinematic_bars.hdf5 \
+  --config orientation_projection_validation/default_config.json \
+  --outdir /media/nuevo/orientation_projection_validation/outputs_matched \
+  --continue-on-error
+```
+
+Y resumir resultados:
 
 ```bash
 cd /home/aespinola/Documents/pythonprojects/datacubes/orientation_projection_validation
 
-python build_projection_manifest.py \
-  --matched-units /home/andy/matched_assets/matched_units.csv \
-  --out data/projection_manifest_matched.csv \
-  --config default_config.json
+python summarize_metrics.py \
+  --metrics-glob "/media/nuevo/orientation_projection_validation/outputs_matched/*/metrics.json" \
+  --out /media/nuevo/orientation_projection_validation/catalog_interorientation_summary_matched.csv
 ```
 
 Para iniciar la descarga de todas las galaxias en la máquina de descarga, guardando la cache pesada fuera del repo:

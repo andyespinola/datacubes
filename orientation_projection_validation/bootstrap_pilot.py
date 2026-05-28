@@ -3,6 +3,12 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+import sys
+
+
+PROJECT_DIR = Path(__file__).resolve().parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
 
 from orientation_validation.config import load_configs
 from orientation_validation.download import DownloadError, download_row_assets, ensure_morphology_catalog

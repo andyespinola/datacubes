@@ -1,6 +1,13 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
+import sys
+
+
+PROJECT_DIR = Path(__file__).resolve().parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
 
 from orientation_validation.config import ProjectionConfig
 from orientation_validation.manifest import build_projection_manifest, build_projection_manifest_from_matched, write_manifest
