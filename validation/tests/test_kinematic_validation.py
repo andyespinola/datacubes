@@ -16,6 +16,7 @@ from validation.kinematic import (
     validate_kinematic_unit,
 )
 from validation.run_kinematic_validation import main
+from validation.run_test_a_sensitivity import main as sensitivity_main
 
 
 def synthetic_unit(with_bar: bool = True, with_moments: bool = False) -> KinematicValidationInput:
@@ -247,6 +248,85 @@ class KinematicValidationTests(unittest.TestCase):
             self.assertTrue((outdir / "test_a_summary_by_view.csv").exists())
             self.assertTrue((outdir / "test_a_summary_by_global_vsigma.csv").exists())
             self.assertTrue((outdir / "test_a_extreme_pass_fail.md").exists())
+
+    def test_sensitivity_runner_writes_combined_summary(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="kin-val-sensitivity-") as tmp:
+            root = Path(tmp)
+            labels_dir = root / "labels"
+            outdir = root / "sensitivity"
+            labels_dir.mkdir()
+            unit = synthetic_unit(with_bar=False)
+            labels_path = labels_dir / f"{unit.canonical_id}.labels.npz"
+            summary_path = labels_dir / f"{unit.canonical_id}.summary.json"
+            np.savez_compressed(
+                labels_path,
+                soft_mass=np.concatenate([np.zeros((1, *unit.m_val.shape), dtype=np.float32), unit.y_int, np.zeros((1, *unit.m_val.shape), dtype=np.float32)]),
+                soft_light=np.concatenate([np.zeros((1, *unit.m_val.shape), dtype=np.float32), unit.y_int, np.zeros((1, *unit.m_val.shape), dtype=np.float32)]),
+                hard_mass=np.zeros(unit.m_val.shape, dtype=np.int16),
+                hard_light=np.zeros(unit.m_val.shape, dtype=np.int16),
+                valid_mask=unit.m_val,
+                class_names=np.array(["no_valido", "bulbo", "disco", "barra", "brazos", "other", "incierto"]),
+            )
+            summary_path.write_text(json.dumps({"bar_metadata": {"barred_target": False}}), encoding="utf-8")
+            maps_path = root / "maps.npz"
+            np.savez_compressed(maps_path, V=unit.v_star, SIGMA=unit.sigma_star)
+            matched_path = root / "matched_units.csv"
+            with matched_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(
+                    handle,
+                    fieldnames=[
+                        "unit_id",
+                        "galaxy_id",
+                        "canonical_id",
+                        "view",
+                        "cube_path",
+                        "maps2d_path",
+                        "maps2d_format",
+                        "v_map_key",
+                        "sigma_map_key",
+                    ],
+                )
+                writer.writeheader()
+                writer.writerow(
+                    {
+                        "unit_id": unit.unit_id,
+                        "galaxy_id": unit.galaxy_id,
+                        "canonical_id": unit.canonical_id,
+                        "view": unit.view_id,
+                        "cube_path": "",
+                        "maps2d_path": str(maps_path),
+                        "maps2d_format": "npz",
+                        "v_map_key": "V",
+                        "sigma_map_key": "SIGMA",
+                    }
+                )
+
+            code = sensitivity_main(
+                [
+                    "--matched-units",
+                    str(matched_path),
+                    "--labels-dir",
+                    str(labels_dir),
+                    "--outdir",
+                    str(outdir),
+                    "--thresholds",
+                    "1.00,1.20",
+                    "--min-spaxels-for-test",
+                    "10",
+                ]
+            )
+
+            self.assertEqual(code, 0)
+            self.assertTrue((outdir / "ratio_1p00" / "kinematic_validation_report.json").exists())
+            self.assertTrue((outdir / "ratio_1p20" / "kinematic_validation_report.json").exists())
+            summary_csv = outdir / "test_a_sensitivity_summary.csv"
+            summary_md = outdir / "test_a_sensitivity_summary.md"
+            self.assertTrue(summary_csv.exists())
+            self.assertTrue(summary_md.exists())
+            with summary_csv.open(newline="", encoding="utf-8") as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual([row["threshold"] for row in rows], ["1.0", "1.2"])
+            self.assertEqual([row["reference_mode"] for row in rows], ["central", "central"])
 
 
 if __name__ == "__main__":

@@ -51,6 +51,28 @@ python -m validation.run_kinematic_validation \
   --continue-on-error
 ```
 
+To compare Test A thresholds in one run, use:
+
+```bash
+python -m validation.run_test_a_sensitivity \
+  --matched-units /home/aespinola/Documents/pythonprojects/datacubes/matched_assets/matched_units.csv \
+  --labels-dir /media/nuevo/structural_labels \
+  --outdir /media/nuevo/structural_validations/kinematic_central_sensitivity \
+  --label-mode soft_mass \
+  --thresholds 1.00,1.10,1.20 \
+  --test-a-reference central \
+  --central-reference-radius-fraction 0.25 \
+  --dominant-class-threshold 0.50 \
+  --min-spaxels-for-test 30 \
+  --continue-on-error
+```
+
+This writes each full validation into `ratio_1p00/`, `ratio_1p10/`, and
+`ratio_1p20/`, plus combined summaries:
+
+- `test_a_sensitivity_summary.csv`
+- `test_a_sensitivity_summary.md`
+
 Optional h3/h4 products from `kinematic_moments` can be enabled with:
 
 ```bash
