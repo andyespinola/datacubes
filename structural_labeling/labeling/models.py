@@ -111,6 +111,6 @@ class LabelProducts:
     valid_mask: np.ndarray
     qa_maps: dict[str, np.ndarray]
     bar_metadata: dict[str, float | int | bool]
-    global_fraction_targets: dict[str, float | int | bool]
+    global_fraction_targets: dict[str, float | int | bool | str]
     global_fraction_recovered: dict[str, float]
     hard_variant_summary: dict[str, dict[str, dict[str, int]]]

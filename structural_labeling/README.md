@@ -89,6 +89,26 @@ Este runner es reanudable: si existen `*.labels.npz`, `*.qa.npz` y
 `*.summary.json`, la unidad se marca como `skipped_existing` salvo que se
 use `--overwrite`.
 
+### 3b. Baseline por umbral duro en epsilon
+
+Para responder al baseline metodológico del paper, se puede generar una
+segunda carpeta de etiquetas usando solo un umbral duro de circularidad
+orbital proxy:
+
+```bash
+cd /home/aespinola/Documents/pythonprojects/datacubes
+python structural_labeling/run_epsilon_baseline.py \
+  --matched-units /home/aespinola/Documents/pythonprojects/datacubes/matched_assets/matched_units.csv \
+  --catalog MaNGIA_catalog.fits \
+  --outdir /media/nuevo/epsilon_labels \
+  --disk-threshold 0.70 \
+  --continue-on-error
+```
+
+El baseline etiqueta `disco` si `epsilon >= 0.70` y asigna el resto a
+`bulbo`, manteniendo la misma grilla, máscara válida, PSF y pesos de masa/luz.
+Luego se valida con los mismos comandos de `validation/run_kinematic_validation.py`.
+
 ### 4. Calibrar sobre un piloto
 
 ```bash

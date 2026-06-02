@@ -81,6 +81,56 @@ This writes each full validation into `ratio_1p00/`, `ratio_1p10/`, and
 - `test_a_sensitivity_summary.csv`
 - `test_a_sensitivity_summary.md`
 
+## Baseline epsilon vs GMM-4D
+
+After generating `/media/nuevo/epsilon_labels` with
+`structural_labeling/run_epsilon_baseline.py`, run the same kinematic
+validation on the hard-epsilon baseline:
+
+```bash
+cd /home/aespinola/Documents/pythonprojects/datacubes
+
+python -m validation.run_kinematic_validation \
+  --matched-units /home/aespinola/Documents/pythonprojects/datacubes/matched_assets/matched_units.csv \
+  --labels-dir /media/nuevo/epsilon_labels \
+  --outdir /media/nuevo/structural_validations/kinematic_epsilon_a10_b10 \
+  --label-mode soft_mass \
+  --dominant-class-threshold 0.50 \
+  --min-spaxels-for-test 10 \
+  --min-spaxels-test-b 10 \
+  --continue-on-error
+```
+
+For the projection-IoU side of the same baseline:
+
+```bash
+python -m orientation_projection_validation.run_projection_validation \
+  --manifest orientation_projection_validation/data/projection_manifest_matched.csv \
+  --cache /media/nuevo/tng_cutouts \
+  --morphology-catalog /media/nuevo/tng_cutouts/morphology/morphs_kinematic_bars.hdf5 \
+  --config orientation_projection_validation/default_config.json \
+  --outdir /media/nuevo/orientation_projection_validation/outputs_matched_epsilon \
+  --label-model epsilon \
+  --epsilon-threshold 0.70 \
+  --continue-on-error
+
+python orientation_projection_validation/summarize_metrics.py \
+  --metrics-glob "/media/nuevo/orientation_projection_validation/outputs_matched_epsilon/*/metrics.json" \
+  --out /media/nuevo/orientation_projection_validation/catalog_interorientation_summary_epsilon.csv \
+  --report /media/nuevo/orientation_projection_validation/catalog_interorientation_summary_epsilon.md
+```
+
+Then compare the GMM-4D and epsilon reports in one publication-style table:
+
+```bash
+python -m validation.compare_baseline_reports \
+  --gmm-kinematic /media/nuevo/structural_validations/kinematic_central_a10_b10/kinematic_validation_report.json \
+  --epsilon-kinematic /media/nuevo/structural_validations/kinematic_epsilon_a10_b10/kinematic_validation_report.json \
+  --gmm-orientation /media/nuevo/orientation_projection_validation/catalog_interorientation_summary_matched.csv \
+  --epsilon-orientation /media/nuevo/orientation_projection_validation/catalog_interorientation_summary_epsilon.csv \
+  --out /media/nuevo/structural_validations/gmm_vs_epsilon_baseline.md
+```
+
 Optional h3/h4 products from `kinematic_moments` can be enabled with:
 
 ```bash

@@ -22,6 +22,7 @@ ensure_structural_labeling_on_path()
 
 from labeling.ssp import load_ssp_grid  # noqa: E402
 from labeling.tng import load_cutout_truth, load_morphology_targets  # noqa: E402
+from labeling.epsilon_baseline import EpsilonBaselineConfig  # noqa: E402
 
 
 def resolve_morphology_catalog(cache_dir: str | Path, explicit_path: str) -> Path:
@@ -47,11 +48,32 @@ def main() -> None:
     parser.add_argument("--max-galaxies", type=int, default=0, help="Máximo de galaxias")
     parser.add_argument("--galaxy-id", action="append", default=[], help="Filtra por galaxy_id; puede repetirse")
     parser.add_argument("--continue-on-error", action="store_true", help="Registra errores y continúa con la siguiente galaxia")
+    parser.add_argument(
+        "--label-model",
+        choices=("gmm4d", "epsilon"),
+        default="gmm4d",
+        help="Modelo de etiquetas a proyectar: GMM-4D actual o baseline duro en epsilon",
+    )
+    parser.add_argument("--epsilon-threshold", type=float, default=0.70, help="Usado si --label-model=epsilon")
+    parser.add_argument(
+        "--epsilon-definition",
+        choices=("vphi_over_vtotal", "jz_over_jnorm"),
+        default="vphi_over_vtotal",
+        help="Proxy de circularidad usado si --label-model=epsilon",
+    )
+    parser.add_argument("--epsilon-counterrotating-as-other", action="store_true")
+    parser.add_argument("--epsilon-counterrotating-threshold", type=float, default=-0.70)
     args = parser.parse_args()
 
     projection_config, label_config = load_configs(args.config)
     morphology_catalog = resolve_morphology_catalog(args.cache, args.morphology_catalog)
     ssp_grid = load_ssp_grid(args.ssp_template)
+    epsilon_config = EpsilonBaselineConfig(
+        disk_threshold=args.epsilon_threshold,
+        circularity_definition=args.epsilon_definition,
+        counterrotating_as_other=args.epsilon_counterrotating_as_other,
+        counterrotating_threshold=args.epsilon_counterrotating_threshold,
+    )
 
     rows = read_manifest(args.manifest)
     if args.galaxy_id:
@@ -81,6 +103,8 @@ def main() -> None:
                 ssp_grid,
                 label_config,
                 projection_config,
+                label_model=args.label_model,
+                epsilon_config=epsilon_config,
             )
             projection_path = galaxy_outdir / "projections.h5"
             save_projection_product(projection_path, row, products, metadata, projection_config)
@@ -90,6 +114,7 @@ def main() -> None:
                 "snapshot": row.snapshot,
                 "subhalo_id": row.subhalo_id,
                 "projection_file": str(projection_path),
+                "label_model": args.label_model,
                 **metrics,
             }
             write_metrics(metrics_path, metrics)

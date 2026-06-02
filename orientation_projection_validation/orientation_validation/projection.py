@@ -17,6 +17,7 @@ ensure_structural_labeling_on_path()
 from labeling.config import LabelConfig  # noqa: E402
 from labeling.constants import CLASS_INDEX, CLASS_NAMES, PHYSICAL_CLASS_INDICES, PHYSICAL_CLASS_NAMES  # noqa: E402
 from labeling.decomposition import derive_family_probabilities, derive_substructure_probabilities  # noqa: E402
+from labeling.epsilon_baseline import EpsilonBaselineConfig, circularity_proxy, particle_probabilities_from_epsilon  # noqa: E402
 from labeling.geometry import center_and_rotate_faceon, deposit_to_grid, sample_grid_at_points, weighted_quantile  # noqa: E402
 from labeling.models import MorphologyTargets, TNGTruth  # noqa: E402
 from labeling.pipeline import HUBBLE_PARAM, SNAP_A  # noqa: E402
@@ -30,7 +31,7 @@ class ParticleLabelState:
     light_weights: np.ndarray
     particle_probs: np.ndarray
     inside_rcov: np.ndarray
-    metadata: dict[str, float | int | bool]
+    metadata: dict[str, float | int | bool | str]
 
 
 def rotation_matrix_z(angle_degrees: float) -> np.ndarray:
@@ -100,6 +101,8 @@ def build_particle_label_state(
     ssp_grid: SSPGrid,
     label_config: LabelConfig,
     projection_config: ProjectionConfig,
+    label_model: str = "gmm4d",
+    epsilon_config: EpsilonBaselineConfig | None = None,
 ) -> ParticleLabelState:
     truth = convert_truth_units(truth, row.snapshot)
     faceon_pos, faceon_vel, faceon_rotation = center_and_rotate_faceon(
@@ -124,36 +127,56 @@ def build_particle_label_state(
         truth.stellar_metallicity,
     )
 
-    family_probs, family_meta = derive_family_probabilities(radius_kpc, truth.stellar_mass, targets, label_config)
     particle_extent = float(np.nanmax(np.abs(np.concatenate((faceon_x[inside_rcov], faceon_y[inside_rcov])))))
     fine_extent = max(float(row.rcov_kpc), particle_extent, 1e-3) * label_config.faceon_padding_factor
-    gas_boost = build_gas_arm_boost(
-        faceon_rotation,
-        truth,
-        label_config,
-        fine_extent,
-        faceon_x,
-        faceon_y,
-    )
-    sub_probs, sub_meta, _ = derive_substructure_probabilities(
-        faceon_x,
-        faceon_y,
-        radius_kpc,
-        phi,
-        truth.stellar_mass,
-        family_probs,
-        targets,
-        label_config,
-        fine_extent,
-        gas_boost=gas_boost,
-    )
 
     particle_probs = np.zeros((truth.stellar_mass.size, len(CLASS_NAMES)), dtype=np.float64)
-    particle_probs[:, CLASS_INDEX["bulbo"]] = family_probs[:, 0]
-    particle_probs[:, CLASS_INDEX["other"]] = family_probs[:, 2]
-    particle_probs[:, CLASS_INDEX["barra"]] = family_probs[:, 1] * sub_probs[:, 1]
-    particle_probs[:, CLASS_INDEX["brazos"]] = family_probs[:, 1] * sub_probs[:, 2]
-    particle_probs[:, CLASS_INDEX["disco"]] = family_probs[:, 1] * sub_probs[:, 0]
+    metadata_extra: dict[str, float | int | bool | str] = {"label_model": label_model}
+    sub_meta: dict[str, float | int | bool] = {}
+    family_meta: dict[str, float] = {}
+    if label_model == "gmm4d":
+        family_probs, family_meta = derive_family_probabilities(radius_kpc, truth.stellar_mass, targets, label_config)
+        gas_boost = build_gas_arm_boost(
+            faceon_rotation,
+            truth,
+            label_config,
+            fine_extent,
+            faceon_x,
+            faceon_y,
+        )
+        sub_probs, sub_meta, _ = derive_substructure_probabilities(
+            faceon_x,
+            faceon_y,
+            radius_kpc,
+            phi,
+            truth.stellar_mass,
+            family_probs,
+            targets,
+            label_config,
+            fine_extent,
+            gas_boost=gas_boost,
+        )
+        particle_probs[:, CLASS_INDEX["bulbo"]] = family_probs[:, 0]
+        particle_probs[:, CLASS_INDEX["other"]] = family_probs[:, 2]
+        particle_probs[:, CLASS_INDEX["barra"]] = family_probs[:, 1] * sub_probs[:, 1]
+        particle_probs[:, CLASS_INDEX["brazos"]] = family_probs[:, 1] * sub_probs[:, 2]
+        particle_probs[:, CLASS_INDEX["disco"]] = family_probs[:, 1] * sub_probs[:, 0]
+    elif label_model == "epsilon":
+        epsilon_config = epsilon_config or EpsilonBaselineConfig()
+        epsilon = circularity_proxy(faceon_pos, faceon_vel, epsilon_config.circularity_definition)
+        particle_probs = particle_probabilities_from_epsilon(epsilon, epsilon_config)
+        metadata_extra.update(
+            {
+                "epsilon_disk_threshold": float(epsilon_config.disk_threshold),
+                "epsilon_circularity_definition": epsilon_config.circularity_definition,
+                "epsilon_counterrotating_as_other": bool(epsilon_config.counterrotating_as_other),
+                "epsilon_counterrotating_threshold": float(epsilon_config.counterrotating_threshold),
+                "epsilon_median": float(np.nanmedian(epsilon)),
+                "epsilon_disk_particle_fraction": float(np.mean(epsilon >= epsilon_config.disk_threshold)),
+            }
+        )
+    else:
+        raise ValueError(f"Unsupported label_model={label_model}")
     denom = np.sum(particle_probs[:, PHYSICAL_CLASS_INDICES], axis=1, keepdims=True)
     particle_probs[:, PHYSICAL_CLASS_INDICES] /= np.clip(denom, 1e-8, None)
 
@@ -163,7 +186,7 @@ def build_particle_label_state(
         if np.any(bar_mass_weights > 0)
         else 0.0
     )
-    metadata: dict[str, float | int | bool] = {
+    metadata: dict[str, float | int | bool | str] = {
         **family_meta,
         **sub_meta,
         "n_particles_total": int(truth.stellar_mass.size),
@@ -172,6 +195,7 @@ def build_particle_label_state(
         "barred_target": bool(targets.barred),
         "bar_radius_recovered_kpc": float(bar_recovered_radius),
         "median_mass_to_light": float(np.nanmedian(particle_ml)),
+        **metadata_extra,
     }
     return ParticleLabelState(
         faceon_pos=faceon_pos,
@@ -305,8 +329,19 @@ def build_projection_product(
     ssp_grid: SSPGrid,
     label_config: LabelConfig,
     projection_config: ProjectionConfig,
-) -> tuple[dict[str, dict[str, np.ndarray]], dict[str, float | int | bool]]:
-    state = build_particle_label_state(row, truth, targets, ssp_grid, label_config, projection_config)
+    label_model: str = "gmm4d",
+    epsilon_config: EpsilonBaselineConfig | None = None,
+) -> tuple[dict[str, dict[str, np.ndarray]], dict[str, float | int | bool | str]]:
+    state = build_particle_label_state(
+        row,
+        truth,
+        targets,
+        ssp_grid,
+        label_config,
+        projection_config,
+        label_model=label_model,
+        epsilon_config=epsilon_config,
+    )
     products: dict[str, dict[str, np.ndarray]] = {}
     for angle in projection_config.orientation_degrees:
         key = f"q{int(round(angle)):03d}"
@@ -318,7 +353,7 @@ def save_projection_product(
     output_path: str | Path,
     row: ProjectionManifestRow,
     products: dict[str, dict[str, np.ndarray]],
-    metadata: dict[str, float | int | bool],
+    metadata: dict[str, float | int | bool | str],
     projection_config: ProjectionConfig,
 ) -> None:
     output_path = Path(output_path)
@@ -337,4 +372,3 @@ def save_projection_product(
             for name, array in payload.items():
                 compression = "gzip" if array.ndim >= 2 else None
                 group.create_dataset(name, data=array, compression=compression)
-

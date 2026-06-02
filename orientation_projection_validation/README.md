@@ -88,7 +88,23 @@ python -m orientation_projection_validation.run_projection_validation \
   --continue-on-error
 ```
 
-Y resumir resultados:
+Para el baseline simple de umbral duro en `epsilon`, usar el mismo manifiesto y
+cambiar solo el modelo de etiquetas:
+
+```bash
+python -m orientation_projection_validation.run_projection_validation \
+  --manifest orientation_projection_validation/data/projection_manifest_matched.csv \
+  --cache /media/nuevo/tng_cutouts \
+  --morphology-catalog /media/nuevo/tng_cutouts/morphology/morphs_kinematic_bars.hdf5 \
+  --config orientation_projection_validation/default_config.json \
+  --outdir /media/nuevo/orientation_projection_validation/outputs_matched_epsilon \
+  --label-model epsilon \
+  --epsilon-threshold 0.70 \
+  --continue-on-error
+```
+
+Y resumir resultados. Este paso no regenera proyecciones; solo lee los
+`metrics.json` ya producidos y crea un CSV más un reporte Markdown concentrado:
 
 ```bash
 cd /home/aespinola/Documents/pythonprojects/datacubes/orientation_projection_validation
