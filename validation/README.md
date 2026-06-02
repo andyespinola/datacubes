@@ -131,6 +131,24 @@ python -m validation.compare_baseline_reports \
   --out /media/nuevo/structural_validations/gmm_vs_epsilon_baseline.md
 ```
 
+If the epsilon labels are still running, the whole follow-up can be launched as
+a single waiting pipeline:
+
+```bash
+cd /home/aespinola/Documents/pythonprojects/datacubes
+
+python -m validation.run_epsilon_followup_pipeline
+```
+
+This waits until every row in
+`/home/aespinola/Documents/pythonprojects/datacubes/matched_assets/matched_units.csv`
+has an epsilon `*.labels.npz` and `*.summary.json`, then runs kinematic
+validation, projection-IoU validation, IoU summarization, and the final
+GMM-4D-vs-epsilon comparison. Progress is written to:
+
+- `/media/nuevo/structural_validations/epsilon_followup_pipeline_state.json`
+- `/media/nuevo/structural_validations/epsilon_followup_pipeline.log`
+
 Optional h3/h4 products from `kinematic_moments` can be enabled with:
 
 ```bash
