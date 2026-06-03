@@ -57,6 +57,7 @@ class Candidate:
     score: float
     class_fractions: dict[str, float]
     class_pixels: dict[str, int]
+    component_fraction: float
     median_pmax: float
     coherence_score: float | None
     v_over_sigma_ratio: float | None
@@ -120,20 +121,53 @@ def load_label_maps(path: str | Path, mode: str) -> LabelMaps:
     return LabelMaps(soft=soft, valid_mask=valid_mask, class_names=class_names, indices=_class_indices(class_names))
 
 
-def _segmentation_stats(labels: LabelMaps, threshold: float) -> tuple[dict[str, float], dict[str, int], float]:
+def _central_component_mask(mask: np.ndarray) -> tuple[np.ndarray, float]:
+    from scipy.ndimage import label
+
+    mask = np.asarray(mask).astype(bool)
+    if not np.any(mask):
+        return np.zeros_like(mask, dtype=bool), 0.0
+    labeled, n_labels = label(mask)
+    if n_labels <= 1:
+        return mask.copy(), 1.0
+
+    h, w = mask.shape
+    center_y = (h - 1) / 2.0
+    center_x = (w - 1) / 2.0
+    center_label = int(labeled[int(round(center_y)), int(round(center_x))])
+    if center_label > 0:
+        selected = labeled == center_label
+        return selected, float(np.count_nonzero(selected) / np.count_nonzero(mask))
+
+    best_label = 1
+    best_distance = float("inf")
+    for label_id in range(1, n_labels + 1):
+        yy, xx = np.nonzero(labeled == label_id)
+        if yy.size == 0:
+            continue
+        distance = float((np.median(yy) - center_y) ** 2 + (np.median(xx) - center_x) ** 2)
+        if distance < best_distance:
+            best_distance = distance
+            best_label = label_id
+    selected = labeled == best_label
+    return selected, float(np.count_nonzero(selected) / np.count_nonzero(mask))
+
+
+def _segmentation_stats(labels: LabelMaps, threshold: float, analysis_mask: np.ndarray) -> tuple[dict[str, float], dict[str, int], float]:
     physical_indices = [labels.indices[name] for name in PHYSICAL_CLASSES]
     physical = labels.soft[physical_indices]
     pmax = np.max(physical, axis=0)
     argmax = np.argmax(physical, axis=0)
-    confident = labels.valid_mask & (pmax >= threshold)
-    valid_total = max(int(np.count_nonzero(labels.valid_mask)), 1)
+    analysis_mask = np.asarray(analysis_mask).astype(bool)
+    confident = analysis_mask & (pmax >= threshold)
+    valid_total = max(int(np.count_nonzero(analysis_mask)), 1)
     fractions: dict[str, float] = {}
     pixels: dict[str, int] = {}
     for idx, name in enumerate(PHYSICAL_CLASSES):
         count = int(np.count_nonzero(confident & (argmax == idx)))
         pixels[name] = count
         fractions[name] = count / valid_total
-    median_pmax = float(np.nanmedian(pmax[labels.valid_mask])) if np.any(labels.valid_mask) else 0.0
+    median_pmax = float(np.nanmedian(pmax[analysis_mask])) if np.any(analysis_mask) else 0.0
     return fractions, pixels, median_pmax
 
 
@@ -180,6 +214,7 @@ def select_candidates(
     threshold: float,
     min_bulge_pixels: int,
     min_disk_pixels: int,
+    min_component_fraction: float,
     max_examples: int,
 ) -> list[Candidate]:
     matched_rows = _read_csv(matched_units)
@@ -194,7 +229,10 @@ def select_candidates(
             continue
         try:
             labels = load_label_maps(path, mode)
-            fractions, pixels, median_pmax = _segmentation_stats(labels, threshold)
+            analysis_mask, component_fraction = _central_component_mask(labels.valid_mask)
+            if component_fraction < min_component_fraction:
+                continue
+            fractions, pixels, median_pmax = _segmentation_stats(labels, threshold, analysis_mask)
         except Exception:
             continue
         if pixels.get("bulge", 0) < min_bulge_pixels or pixels.get("disk", 0) < min_disk_pixels:
@@ -211,6 +249,7 @@ def select_candidates(
                 score=score,
                 class_fractions=fractions,
                 class_pixels=pixels,
+                component_fraction=component_fraction,
                 median_pmax=median_pmax,
                 coherence_score=_finite_float(kin.get("coherence_score")),
                 v_over_sigma_ratio=_finite_float(kin.get("v_over_sigma_ratio")),
@@ -234,7 +273,7 @@ def select_candidates(
     return selected
 
 
-def _probability_rgb(labels: LabelMaps) -> np.ndarray:
+def _probability_rgb(labels: LabelMaps, display_mask: np.ndarray) -> np.ndarray:
     h, w = labels.valid_mask.shape
     rgb = np.ones((h, w, 3), dtype=np.float32)
     mix = np.zeros_like(rgb)
@@ -243,27 +282,75 @@ def _probability_rgb(labels: LabelMaps) -> np.ndarray:
     for name in PHYSICAL_CLASSES:
         mix += labels.soft[labels.indices[name], :, :, None] * CLASS_COLORS[name][None, None, :]
     alpha = np.clip(0.25 + 0.75 * pmax, 0.0, 1.0)
-    alpha_valid = alpha[labels.valid_mask][:, None]
-    rgb[labels.valid_mask] = (1.0 - alpha_valid) + alpha_valid * mix[labels.valid_mask]
+    display_mask = np.asarray(display_mask).astype(bool)
+    alpha_valid = alpha[display_mask][:, None]
+    rgb[display_mask] = (1.0 - alpha_valid) + alpha_valid * mix[display_mask]
     return np.clip(rgb, 0.0, 1.0)
 
 
-def _hard_rgb(labels: LabelMaps, threshold: float) -> np.ndarray:
+def _hard_rgb(labels: LabelMaps, threshold: float, display_mask: np.ndarray) -> np.ndarray:
     h, w = labels.valid_mask.shape
     rgb = np.ones((h, w, 3), dtype=np.float32)
+    display_mask = np.asarray(display_mask).astype(bool)
     physical = np.stack([labels.soft[labels.indices[name]] for name in PHYSICAL_CLASSES], axis=0)
     pmax = np.max(physical, axis=0)
     argmax = np.argmax(physical, axis=0)
-    uncertain = labels.valid_mask & (pmax < threshold)
+    uncertain = display_mask & (pmax < threshold)
     rgb[uncertain] = CLASS_COLORS["uncertain"]
     for idx, name in enumerate(PHYSICAL_CLASSES):
-        mask = labels.valid_mask & (pmax >= threshold) & (argmax == idx)
+        mask = display_mask & (pmax >= threshold) & (argmax == idx)
         rgb[mask] = CLASS_COLORS[name]
     return rgb
 
 
-def _probability_map(labels: LabelMaps, class_name: str) -> np.ndarray:
-    return np.asarray(labels.soft[labels.indices[class_name]], dtype=np.float32)
+def _qa_path(label_path: Path) -> Path:
+    return label_path.with_name(label_path.name.replace(".labels.npz", ".qa.npz"))
+
+
+def _unsegmented_image(label_path: Path, labels: LabelMaps, image_weight: str) -> np.ndarray:
+    qa_path = _qa_path(label_path)
+    key_candidates = (
+        ("observed_light_contributions", "observed_light_components")
+        if image_weight == "light"
+        else ("observed_mass_contributions", "observed_mass_components")
+    )
+    if qa_path.exists():
+        with np.load(qa_path, allow_pickle=False) as data:
+            for key in key_candidates:
+                if key in data:
+                    cube = np.asarray(data[key], dtype=np.float32)
+                    if cube.ndim == 3 and cube.shape[0] >= len(labels.class_names):
+                        physical_indices = [labels.indices[name] for name in PHYSICAL_CLASSES]
+                        image = np.sum(cube[physical_indices], axis=0)
+                        if np.nanmax(image) > np.nanmin(image):
+                            return image.astype(np.float32)
+    physical_indices = [labels.indices[name] for name in PHYSICAL_CLASSES]
+    return np.sum(labels.soft[physical_indices], axis=0).astype(np.float32)
+
+
+def _crop_slices(mask: np.ndarray, pad: int = 3) -> tuple[slice, slice]:
+    yy, xx = np.nonzero(mask)
+    if yy.size == 0:
+        return slice(None), slice(None)
+    y0 = max(int(yy.min()) - pad, 0)
+    y1 = min(int(yy.max()) + pad + 1, mask.shape[0])
+    x0 = max(int(xx.min()) - pad, 0)
+    x1 = min(int(xx.max()) + pad + 1, mask.shape[1])
+    return slice(y0, y1), slice(x0, x1)
+
+
+def _image_limits(image: np.ndarray, mask: np.ndarray) -> tuple[float, float]:
+    values = np.asarray(image, dtype=np.float32)[mask & np.isfinite(image)]
+    values = values[values > 0]
+    if values.size == 0:
+        return 0.0, 1.0
+    vmin = float(np.nanpercentile(values, 2))
+    vmax = float(np.nanpercentile(values, 99))
+    if vmax <= vmin:
+        vmax = float(np.nanmax(values))
+    if vmax <= vmin:
+        vmax = vmin + 1.0
+    return vmin, vmax
 
 
 def _legend_handles() -> list[Any]:
@@ -283,37 +370,39 @@ def _candidate_title(candidate: Candidate) -> str:
     )
 
 
-def render_candidate(candidate: Candidate, outdir: Path, mode: str, threshold: float) -> Path:
+def render_candidate(candidate: Candidate, outdir: Path, mode: str, threshold: float, image_weight: str) -> Path:
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     labels = load_label_maps(candidate.label_path, mode)
+    display_mask, _ = _central_component_mask(labels.valid_mask)
+    crop = _crop_slices(display_mask)
+    image = _unsegmented_image(candidate.label_path, labels, image_weight)
+    image = np.where(display_mask, image, np.nan)
+    vmin, vmax = _image_limits(image, display_mask)
+    segmented = _hard_rgb(labels, threshold, display_mask)
     outdir.mkdir(parents=True, exist_ok=True)
     output = outdir / f"{candidate.canonical_id}.segmentation.png"
-    fig, axes = plt.subplots(1, 4, figsize=(13.5, 3.6), constrained_layout=True)
-    axes[0].imshow(_probability_rgb(labels), origin="lower")
-    axes[0].set_title("Componentes suaves")
-    axes[1].imshow(_hard_rgb(labels, threshold), origin="lower")
-    axes[1].set_title(f"Dominante p>={threshold:.2f}")
-    im2 = axes[2].imshow(_probability_map(labels, "bulge"), origin="lower", cmap="magma", vmin=0.0, vmax=1.0)
-    axes[2].set_title("P(bulbo)")
-    im3 = axes[3].imshow(_probability_map(labels, "disk"), origin="lower", cmap="Blues", vmin=0.0, vmax=1.0)
-    axes[3].set_title("P(disco)")
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 3.8), constrained_layout=True)
+    cmap = plt.get_cmap("gray").copy()
+    cmap.set_bad("white")
+    axes[0].imshow(image[crop], origin="lower", cmap=cmap, vmin=vmin, vmax=vmax)
+    axes[0].set_title("Imagen sin segmentar")
+    axes[1].imshow(segmented[crop], origin="lower")
+    axes[1].set_title(f"Segmentación p>={threshold:.2f}")
     for ax in axes:
         ax.set_xticks([])
         ax.set_yticks([])
     fig.suptitle(_candidate_title(candidate), fontsize=10)
-    fig.colorbar(im2, ax=axes[2], fraction=0.046, pad=0.02)
-    fig.colorbar(im3, ax=axes[3], fraction=0.046, pad=0.02)
     fig.legend(handles=_legend_handles(), loc="lower center", ncols=6, frameon=False, fontsize=8)
     fig.savefig(output, dpi=180)
     plt.close(fig)
     return output
 
 
-def render_montage(candidates: list[Candidate], outdir: Path, mode: str, threshold: float) -> Path:
+def render_montage(candidates: list[Candidate], outdir: Path, mode: str, threshold: float, image_weight: str) -> Path:
     import matplotlib
 
     matplotlib.use("Agg")
@@ -325,10 +414,16 @@ def render_montage(candidates: list[Candidate], outdir: Path, mode: str, thresho
     fig, axes = plt.subplots(rows, 2, figsize=(7.2, 3.1 * rows), squeeze=False, constrained_layout=True)
     for row_idx, candidate in enumerate(candidates):
         labels = load_label_maps(candidate.label_path, mode)
-        axes[row_idx, 0].imshow(_probability_rgb(labels), origin="lower")
-        axes[row_idx, 0].set_title(f"{candidate.canonical_id}\ncomponentes suaves", fontsize=9)
-        axes[row_idx, 1].imshow(_hard_rgb(labels, threshold), origin="lower")
-        axes[row_idx, 1].set_title("segmentación dominante", fontsize=9)
+        display_mask, _ = _central_component_mask(labels.valid_mask)
+        crop = _crop_slices(display_mask)
+        image = np.where(display_mask, _unsegmented_image(candidate.label_path, labels, image_weight), np.nan)
+        vmin, vmax = _image_limits(image, display_mask)
+        cmap = plt.get_cmap("gray").copy()
+        cmap.set_bad("white")
+        axes[row_idx, 0].imshow(image[crop], origin="lower", cmap=cmap, vmin=vmin, vmax=vmax)
+        axes[row_idx, 0].set_title(f"{candidate.canonical_id}\nimagen sin segmentar", fontsize=9)
+        axes[row_idx, 1].imshow(_hard_rgb(labels, threshold, display_mask)[crop], origin="lower")
+        axes[row_idx, 1].set_title("segmentación", fontsize=9)
         for ax in axes[row_idx]:
             ax.set_xticks([])
             ax.set_yticks([])
@@ -353,6 +448,7 @@ def _write_selected_csv(path: Path, candidates: list[Candidate]) -> Path:
         "test_a",
         "test_b",
         "passes",
+        "component_fraction",
         "label_path",
         *[f"frac_{name}" for name in PHYSICAL_CLASSES],
         *[f"pixels_{name}" for name in PHYSICAL_CLASSES],
@@ -374,6 +470,7 @@ def _write_selected_csv(path: Path, candidates: list[Candidate]) -> Path:
                 "test_a": candidate.test_a,
                 "test_b": candidate.test_b,
                 "passes": candidate.passes,
+                "component_fraction": candidate.component_fraction,
                 "label_path": str(candidate.label_path),
             }
             for name in PHYSICAL_CLASSES:
@@ -401,13 +498,14 @@ def _write_markdown(path: Path, candidates: list[Candidate], image_paths: list[P
         "",
         "## Resumen de selección",
         "",
-        "| canonical_id | score | A | B | coherence | V/sigma ratio | sigma ratio | bulge frac | disk frac | bar frac | arms frac | other frac |",
-        "|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| canonical_id | score | A | B | coherence | V/sigma ratio | sigma ratio | component frac | bulge frac | disk frac | bar frac | arms frac | other frac |",
+        "|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for candidate in candidates:
         lines.append(
             f"| `{candidate.canonical_id}` | {_fmt(candidate.score, 2)} | {candidate.test_a or 'N/A'} | {candidate.test_b or 'N/A'} | "
             f"{_fmt(candidate.coherence_score, 2)} | {_fmt(candidate.v_over_sigma_ratio, 2)} | {_fmt(candidate.sigma_ratio, 2)} | "
+            f"{_fmt(candidate.component_fraction)} | "
             f"{_fmt(candidate.class_fractions.get('bulge'))} | {_fmt(candidate.class_fractions.get('disk'))} | "
             f"{_fmt(candidate.class_fractions.get('bar'))} | {_fmt(candidate.class_fractions.get('arms'))} | "
             f"{_fmt(candidate.class_fractions.get('other'))} |"
@@ -435,7 +533,7 @@ def _write_markdown(path: Path, candidates: list[Candidate], image_paths: list[P
             "",
             "## Nota para el manuscrito",
             "",
-            "Estas figuras no deben presentarse como casos escogidos manualmente. La selección queda trazada por `selected_segmentation_examples.csv`, donde se reportan los criterios usados para priorizar ejemplos con segmentación limpia y validación cinemática favorable.",
+            "Estas figuras no deben presentarse como casos escogidos manualmente. La selección queda trazada por `selected_segmentation_examples.csv`, donde se reportan los criterios usados para priorizar ejemplos con segmentación limpia, componente central conectada y validación cinemática favorable.",
             "",
         ]
     )
@@ -454,13 +552,17 @@ def run(args: argparse.Namespace) -> int:
         threshold=args.dominant_threshold,
         min_bulge_pixels=args.min_bulge_pixels,
         min_disk_pixels=args.min_disk_pixels,
+        min_component_fraction=args.min_component_fraction,
         max_examples=args.n_examples,
     )
     if not candidates:
         raise SystemExit("No encontré candidatos que cumplan los criterios de selección")
 
-    image_paths = [render_candidate(candidate, outdir, args.label_mode, args.dominant_threshold) for candidate in candidates]
-    montage_path = render_montage(candidates, outdir, args.label_mode, args.dominant_threshold)
+    image_paths = [
+        render_candidate(candidate, outdir, args.label_mode, args.dominant_threshold, args.image_weight)
+        for candidate in candidates
+    ]
+    montage_path = render_montage(candidates, outdir, args.label_mode, args.dominant_threshold, args.image_weight)
     selected_csv = _write_selected_csv(outdir / "selected_segmentation_examples.csv", candidates)
     report_path = _write_markdown(outdir / "segmentation_examples_report.md", candidates, image_paths, montage_path, selected_csv)
     summary = {
@@ -485,6 +587,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dominant-threshold", type=float, default=0.50)
     parser.add_argument("--min-bulge-pixels", type=int, default=10)
     parser.add_argument("--min-disk-pixels", type=int, default=30)
+    parser.add_argument("--min-component-fraction", type=float, default=0.80)
+    parser.add_argument("--image-weight", choices=("light", "mass"), default="light")
     return parser
 
 
