@@ -4,6 +4,7 @@ import argparse
 import csv
 import json
 import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,7 @@ CLASS_COLORS = {
     "invalid": np.array([1.0, 1.0, 1.0]),
 }
 PHYSICAL_CLASSES = ("bulge", "disk", "bar", "arms", "other")
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".npz"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +56,7 @@ class Candidate:
     unit_id: str
     view: str
     label_path: Path
+    image_path: Path | None
     score: float
     class_fractions: dict[str, float]
     class_pixels: dict[str, int]
@@ -86,6 +89,70 @@ def _as_bool(value: Any) -> bool:
 def _read_csv(path: str | Path) -> list[dict[str, str]]:
     with Path(path).open(newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
+
+
+def _id_tokens(row: dict[str, str]) -> list[str]:
+    tokens = []
+    for key in ("canonical_id", "unit_id", "galaxy_id"):
+        value = (row.get(key) or "").strip()
+        if value:
+            tokens.append(value)
+    snapshot = (row.get("snapshot") or "").strip()
+    subhalo_id = (row.get("subhalo_id") or "").strip()
+    view = (row.get("view") or "").strip()
+    if snapshot and subhalo_id:
+        tokens.append(f"TNG50-{int(float(snapshot))}-{int(float(subhalo_id))}")
+        if view:
+            tokens.append(f"TNG50-{int(float(snapshot))}-{int(float(subhalo_id))}-{int(float(view))}")
+    seen = set()
+    unique = []
+    for token in tokens:
+        if token not in seen:
+            unique.append(token)
+            seen.add(token)
+    return unique
+
+
+def _image_match_tokens(path: Path) -> list[str]:
+    text = path.as_posix()
+    matches = re.findall(r"TNG50-\d+-\d+(?:-\d+)?(?:-\d+)?", text)
+    return sorted(set(matches), key=lambda token: -len(token))
+
+
+def build_image_index(root: Path | None) -> dict[str, Path]:
+    if root is None or not root.exists():
+        return {}
+    index: dict[str, Path] = {}
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in IMAGE_SUFFIXES:
+            continue
+        for token in _image_match_tokens(path):
+            current = index.get(token)
+            if current is None or _image_rank(path) < _image_rank(current):
+                index[token] = path
+    return index
+
+
+def _image_rank(path: Path) -> tuple[int, int, str]:
+    suffix = path.suffix.lower()
+    if suffix in {".png", ".jpg", ".jpeg"}:
+        suffix_rank = 0
+    elif suffix == ".npz":
+        suffix_rank = 1
+    else:
+        suffix_rank = 2
+    return suffix_rank, len(path.name), path.as_posix()
+
+
+def match_image_path(row: dict[str, str], image_index: dict[str, Path]) -> Path | None:
+    for token in sorted(_id_tokens(row), key=lambda item: -len(item)):
+        if token in image_index:
+            return image_index[token]
+        # ImagesMangGenerator often writes canonical IDs as TNG...-ifu_v{view}.
+        matches = [path for key, path in image_index.items() if key.startswith(token)]
+        if matches:
+            return sorted(matches, key=_image_rank)[0]
+    return None
 
 
 def _decode_class_names(raw: np.ndarray) -> list[str]:
@@ -215,6 +282,8 @@ def select_candidates(
     min_bulge_pixels: int,
     min_disk_pixels: int,
     min_component_fraction: float,
+    image_index: dict[str, Path],
+    require_image: bool,
     max_examples: int,
 ) -> list[Candidate]:
     matched_rows = _read_csv(matched_units)
@@ -223,6 +292,9 @@ def select_candidates(
     for row in matched_rows:
         canonical_id = (row.get("canonical_id") or "").strip()
         if not canonical_id:
+            continue
+        image_path = match_image_path(row, image_index)
+        if require_image and image_path is None:
             continue
         path = _label_path(labels_dir, canonical_id)
         if not path.exists():
@@ -246,6 +318,7 @@ def select_candidates(
                 unit_id=row.get("unit_id", ""),
                 view=row.get("view", ""),
                 label_path=path,
+                image_path=image_path,
                 score=score,
                 class_fractions=fractions,
                 class_pixels=pixels,
@@ -307,7 +380,85 @@ def _qa_path(label_path: Path) -> Path:
     return label_path.with_name(label_path.name.replace(".labels.npz", ".qa.npz"))
 
 
-def _unsegmented_image(label_path: Path, labels: LabelMaps, image_weight: str) -> np.ndarray:
+def _stretch_rgb(rgb: np.ndarray, percentile: float = 99.5, stretch: str = "asinh") -> np.ndarray:
+    rgb = np.asarray(rgb, dtype=np.float32)
+    rgb = np.nan_to_num(rgb, nan=0.0, posinf=0.0, neginf=0.0)
+    low = float(np.nanpercentile(rgb, 1.0))
+    high = float(np.nanpercentile(rgb, percentile))
+    if high <= low:
+        high = float(np.nanmax(rgb))
+    if high <= low:
+        return np.zeros_like(rgb, dtype=np.float32)
+    scaled = np.clip((rgb - low) / (high - low), 0.0, None)
+    if stretch == "sqrt":
+        scaled = np.sqrt(scaled)
+    elif stretch == "linear":
+        pass
+    else:
+        scaled = np.arcsinh(10.0 * scaled) / np.arcsinh(10.0)
+    return np.clip(scaled, 0.0, 1.0).astype(np.float32)
+
+
+def _load_npz_rgb(path: Path) -> np.ndarray:
+    with np.load(path, allow_pickle=False) as payload:
+        if "rgb" in payload:
+            image = np.asarray(payload["rgb"], dtype=np.float32)
+        elif "preview" in payload:
+            image = np.asarray(payload["preview"], dtype=np.float32)
+        elif "image" in payload:
+            image = np.asarray(payload["image"], dtype=np.float32)
+        else:
+            raise KeyError(f"No encontré image/rgb/preview en {path}")
+    if image.ndim == 3 and image.shape[0] == 3:
+        # ImagesMangGenerator stores bands as g,r,i; use i,r,g for display.
+        image = np.stack((image[2], image[1], image[0]), axis=-1)
+    if image.ndim == 2:
+        image = np.repeat(image[:, :, None], 3, axis=2)
+    if image.ndim != 3 or image.shape[2] < 3:
+        raise ValueError(f"Imagen NPZ inválida en {path}: shape={image.shape}")
+    return _stretch_rgb(image[:, :, :3])
+
+
+def _load_external_rgb(path: Path) -> np.ndarray:
+    import matplotlib.image as mpimg
+
+    if path.suffix.lower() == ".npz":
+        return _load_npz_rgb(path)
+    raw = mpimg.imread(path)
+    image = np.asarray(raw)
+    if image.dtype.kind in {"u", "i"}:
+        image = image.astype(np.float32) / np.iinfo(image.dtype).max
+    else:
+        image = image.astype(np.float32)
+    if image.ndim == 2:
+        image = np.repeat(image[:, :, None], 3, axis=2)
+    if image.ndim == 3 and image.shape[2] == 4:
+        image = image[:, :, :3]
+    if image.ndim == 3 and image.shape[2] == 1:
+        image = np.repeat(image, 3, axis=2)
+    if image.ndim != 3 or image.shape[2] < 3:
+        raise ValueError(f"Imagen inválida en {path}: shape={image.shape}")
+    return np.clip(image[:, :, :3], 0.0, 1.0).astype(np.float32)
+
+
+def _resize_rgb_to_shape(rgb: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    if rgb.shape[:2] == shape:
+        return rgb
+    from scipy.ndimage import zoom
+
+    zoom_y = shape[0] / rgb.shape[0]
+    zoom_x = shape[1] / rgb.shape[1]
+    resized = zoom(rgb, (zoom_y, zoom_x, 1.0), order=1)
+    return np.clip(resized, 0.0, 1.0).astype(np.float32)
+
+
+def _unsegmented_image(label_path: Path, labels: LabelMaps, image_weight: str, external_image: Path | None) -> np.ndarray:
+    if external_image is not None:
+        try:
+            return _resize_rgb_to_shape(_load_external_rgb(external_image), labels.valid_mask.shape)
+        except Exception as exc:
+            raise RuntimeError(f"No pude cargar la imagen emparejada {external_image}") from exc
+
     qa_path = _qa_path(label_path)
     key_candidates = (
         ("observed_light_contributions", "observed_light_components")
@@ -340,6 +491,8 @@ def _crop_slices(mask: np.ndarray, pad: int = 3) -> tuple[slice, slice]:
 
 
 def _image_limits(image: np.ndarray, mask: np.ndarray) -> tuple[float, float]:
+    if image.ndim == 3:
+        return 0.0, 1.0
     values = np.asarray(image, dtype=np.float32)[mask & np.isfinite(image)]
     values = values[values > 0]
     if values.size == 0:
@@ -351,6 +504,14 @@ def _image_limits(image: np.ndarray, mask: np.ndarray) -> tuple[float, float]:
     if vmax <= vmin:
         vmax = vmin + 1.0
     return vmin, vmax
+
+
+def _masked_image_for_display(image: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    if image.ndim == 3:
+        output = np.ones_like(image, dtype=np.float32)
+        output[mask] = image[mask]
+        return output
+    return np.where(mask, image, np.nan)
 
 
 def _legend_handles() -> list[Any]:
@@ -379,16 +540,21 @@ def render_candidate(candidate: Candidate, outdir: Path, mode: str, threshold: f
     labels = load_label_maps(candidate.label_path, mode)
     display_mask, _ = _central_component_mask(labels.valid_mask)
     crop = _crop_slices(display_mask)
-    image = _unsegmented_image(candidate.label_path, labels, image_weight)
-    image = np.where(display_mask, image, np.nan)
+    image = _masked_image_for_display(
+        _unsegmented_image(candidate.label_path, labels, image_weight, candidate.image_path),
+        display_mask,
+    )
     vmin, vmax = _image_limits(image, display_mask)
     segmented = _hard_rgb(labels, threshold, display_mask)
     outdir.mkdir(parents=True, exist_ok=True)
     output = outdir / f"{candidate.canonical_id}.segmentation.png"
     fig, axes = plt.subplots(1, 2, figsize=(7.2, 3.8), constrained_layout=True)
-    cmap = plt.get_cmap("gray").copy()
-    cmap.set_bad("white")
-    axes[0].imshow(image[crop], origin="lower", cmap=cmap, vmin=vmin, vmax=vmax)
+    if image.ndim == 3:
+        axes[0].imshow(image[crop], origin="lower")
+    else:
+        cmap = plt.get_cmap("gray").copy()
+        cmap.set_bad("white")
+        axes[0].imshow(image[crop], origin="lower", cmap=cmap, vmin=vmin, vmax=vmax)
     axes[0].set_title("Imagen sin segmentar")
     axes[1].imshow(segmented[crop], origin="lower")
     axes[1].set_title(f"Segmentación p>={threshold:.2f}")
@@ -416,11 +582,17 @@ def render_montage(candidates: list[Candidate], outdir: Path, mode: str, thresho
         labels = load_label_maps(candidate.label_path, mode)
         display_mask, _ = _central_component_mask(labels.valid_mask)
         crop = _crop_slices(display_mask)
-        image = np.where(display_mask, _unsegmented_image(candidate.label_path, labels, image_weight), np.nan)
+        image = _masked_image_for_display(
+            _unsegmented_image(candidate.label_path, labels, image_weight, candidate.image_path),
+            display_mask,
+        )
         vmin, vmax = _image_limits(image, display_mask)
-        cmap = plt.get_cmap("gray").copy()
-        cmap.set_bad("white")
-        axes[row_idx, 0].imshow(image[crop], origin="lower", cmap=cmap, vmin=vmin, vmax=vmax)
+        if image.ndim == 3:
+            axes[row_idx, 0].imshow(image[crop], origin="lower")
+        else:
+            cmap = plt.get_cmap("gray").copy()
+            cmap.set_bad("white")
+            axes[row_idx, 0].imshow(image[crop], origin="lower", cmap=cmap, vmin=vmin, vmax=vmax)
         axes[row_idx, 0].set_title(f"{candidate.canonical_id}\nimagen sin segmentar", fontsize=9)
         axes[row_idx, 1].imshow(_hard_rgb(labels, threshold, display_mask)[crop], origin="lower")
         axes[row_idx, 1].set_title("segmentación", fontsize=9)
@@ -450,6 +622,7 @@ def _write_selected_csv(path: Path, candidates: list[Candidate]) -> Path:
         "passes",
         "component_fraction",
         "label_path",
+        "image_path",
         *[f"frac_{name}" for name in PHYSICAL_CLASSES],
         *[f"pixels_{name}" for name in PHYSICAL_CLASSES],
     ]
@@ -472,6 +645,7 @@ def _write_selected_csv(path: Path, candidates: list[Candidate]) -> Path:
                 "passes": candidate.passes,
                 "component_fraction": candidate.component_fraction,
                 "label_path": str(candidate.label_path),
+                "image_path": str(candidate.image_path or ""),
             }
             for name in PHYSICAL_CLASSES:
                 row[f"frac_{name}"] = candidate.class_fractions.get(name, 0.0)
@@ -519,6 +693,7 @@ def _write_markdown(path: Path, candidates: list[Candidate], image_paths: list[P
                 f"- `galaxy_id`: `{candidate.galaxy_id}`",
                 f"- `unit_id`: `{candidate.unit_id}`",
                 f"- `label_path`: `{candidate.label_path}`",
+                f"- `image_path`: `{candidate.image_path or ''}`",
                 "",
                 f"![{candidate.canonical_id}]({image_path.name})",
                 "",
@@ -544,6 +719,10 @@ def _write_markdown(path: Path, candidates: list[Candidate], image_paths: list[P
 def run(args: argparse.Namespace) -> int:
     outdir = Path(args.outdir).expanduser()
     kinematic_units = Path(args.kinematic_units).expanduser() if args.kinematic_units else None
+    image_root = Path(args.image_root).expanduser() if args.image_root else None
+    image_index = build_image_index(image_root)
+    if args.require_image and not image_index:
+        raise SystemExit(f"No encontré imágenes en --image-root={image_root}")
     candidates = select_candidates(
         matched_units=Path(args.matched_units).expanduser(),
         labels_dir=Path(args.labels_dir).expanduser(),
@@ -553,6 +732,8 @@ def run(args: argparse.Namespace) -> int:
         min_bulge_pixels=args.min_bulge_pixels,
         min_disk_pixels=args.min_disk_pixels,
         min_component_fraction=args.min_component_fraction,
+        image_index=image_index,
+        require_image=args.require_image,
         max_examples=args.n_examples,
     )
     if not candidates:
@@ -570,6 +751,8 @@ def run(args: argparse.Namespace) -> int:
         "montage": str(montage_path),
         "selected_csv": str(selected_csv),
         "n_examples": len(candidates),
+        "image_root": str(image_root or ""),
+        "n_images_indexed": len(image_index),
         "images": [str(path) for path in image_paths],
     }
     print(json.dumps(summary, indent=2, sort_keys=True))
@@ -582,8 +765,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--labels-dir", default="/media/nuevo/structural_labels")
     parser.add_argument("--kinematic-units", default="/media/nuevo/structural_validations/kinematic_central_a10_b10/kinematic_validation_units.csv")
     parser.add_argument("--outdir", default="/media/nuevo/structural_validations/segmentation_examples")
+    parser.add_argument("--image-root", default="/media/nuevo/output_imagenes")
+    parser.add_argument("--require-image", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--label-mode", choices=("soft_mass", "soft_light"), default="soft_mass")
-    parser.add_argument("--n-examples", type=int, default=4)
+    parser.add_argument("--n-examples", type=int, default=40)
     parser.add_argument("--dominant-threshold", type=float, default=0.50)
     parser.add_argument("--min-bulge-pixels", type=int, default=10)
     parser.add_argument("--min-disk-pixels", type=int, default=30)

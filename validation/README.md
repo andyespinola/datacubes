@@ -178,8 +178,9 @@ python -m validation.make_segmentation_examples \
   --matched-units /home/aespinola/Documents/pythonprojects/datacubes/matched_assets/matched_units.csv \
   --labels-dir /media/nuevo/structural_labels \
   --kinematic-units /media/nuevo/structural_validations/kinematic_central_a10_b10/kinematic_validation_units.csv \
-  --outdir /media/nuevo/structural_validations/segmentation_examples \
-  --n-examples 4 \
+  --image-root /media/nuevo/output_imagenes \
+  --outdir /media/nuevo/structural_validations/segmentation_examples_many \
+  --n-examples 40 \
   --label-mode soft_mass \
   --dominant-threshold 0.50 \
   --min-component-fraction 0.80
@@ -192,9 +193,12 @@ This writes:
 - `selected_segmentation_examples.csv`
 - `segmentation_examples_report.md`
 
-Each figure contains the unsegmented light image next to a single colored
-segmentation map with a class legend. For publication figures the script keeps
-only the central connected component of the valid mask and, by default,
-requires it to contain at least 80% of the valid pixels. This avoids examples
-where disconnected edge islands appear after a blank gap. If this is too
-strict for a small run, lower `--min-component-fraction`.
+Each figure contains the matched galaxy image from `--image-root` next to a
+single colored segmentation map with a class legend. The image matcher scans
+PNG/JPG/NPZ files recursively and matches by `canonical_id`, `unit_id`, or
+`galaxy_id`. For publication figures the script keeps only the central
+connected component of the valid mask and, by default, requires it to contain
+at least 80% of the valid pixels. This avoids examples where disconnected edge
+islands appear after a blank gap. If this is too strict for a small run, lower
+`--min-component-fraction`. To allow fallback to the internal QA proxy when an
+external image is missing, pass `--no-require-image`.
