@@ -166,3 +166,27 @@ Outputs:
 - `test_a_summary_by_sample.csv`
 - `test_a_summary_by_global_vsigma.csv`
 - `test_a_extreme_pass_fail.md`
+
+## Representative segmentation figures
+
+To produce publication-ready colored examples of segmented galaxies:
+
+```bash
+cd /home/aespinola/Documents/pythonprojects/datacubes
+
+python -m validation.make_segmentation_examples \
+  --matched-units /home/aespinola/Documents/pythonprojects/datacubes/matched_assets/matched_units.csv \
+  --labels-dir /media/nuevo/structural_labels \
+  --kinematic-units /media/nuevo/structural_validations/kinematic_central_a10_b10/kinematic_validation_units.csv \
+  --outdir /media/nuevo/structural_validations/segmentation_examples \
+  --n-examples 4 \
+  --label-mode soft_mass \
+  --dominant-threshold 0.50
+```
+
+This writes:
+
+- `segmentation_examples_montage.png`
+- one `*.segmentation.png` per selected galaxy
+- `selected_segmentation_examples.csv`
+- `segmentation_examples_report.md`
