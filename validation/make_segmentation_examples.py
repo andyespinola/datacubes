@@ -22,10 +22,10 @@ CLASS_ALIASES = {
     "uncertain": ("uncertain", "incierto"),
 }
 DISPLAY_NAMES = {
-    "bulge": "Bulbo",
-    "disk": "Disco",
-    "bar": "Barra",
-    "arms": "Brazos",
+    "bulge": "Bulge",
+    "disk": "Disk",
+    "bar": "Bar",
+    "arms": "Arms",
     "other": "Other",
 }
 CLASS_COLORS = {
@@ -490,6 +490,12 @@ def _crop_slices(mask: np.ndarray, pad: int = 3) -> tuple[slice, slice]:
     return slice(y0, y1), slice(x0, x1)
 
 
+def _crop_for_mode(mask: np.ndarray, mode: str) -> tuple[slice, slice]:
+    if mode == "component":
+        return _crop_slices(mask)
+    return slice(None), slice(None)
+
+
 def _image_limits(image: np.ndarray, mask: np.ndarray) -> tuple[float, float]:
     if image.ndim == 3:
         return 0.0, 1.0
@@ -514,13 +520,19 @@ def _masked_image_for_display(image: np.ndarray, mask: np.ndarray) -> np.ndarray
     return np.where(mask, image, np.nan)
 
 
+def _image_for_display(image: np.ndarray, mask: np.ndarray, show_full_frame: bool) -> np.ndarray:
+    if show_full_frame and image.ndim == 3:
+        return image
+    return _masked_image_for_display(image, mask)
+
+
 def _legend_handles() -> list[Any]:
     import matplotlib.patches as mpatches
 
     handles = []
     for name in PHYSICAL_CLASSES:
         handles.append(mpatches.Patch(color=CLASS_COLORS[name], label=DISPLAY_NAMES[name]))
-    handles.append(mpatches.Patch(color=CLASS_COLORS["uncertain"], label="Incierto"))
+    handles.append(mpatches.Patch(color=CLASS_COLORS["uncertain"], label="Uncertain"))
     return handles
 
 
@@ -531,7 +543,14 @@ def _candidate_title(candidate: Candidate) -> str:
     )
 
 
-def render_candidate(candidate: Candidate, outdir: Path, mode: str, threshold: float, image_weight: str) -> Path:
+def render_candidate(
+    candidate: Candidate,
+    outdir: Path,
+    mode: str,
+    threshold: float,
+    image_weight: str,
+    crop_mode: str,
+) -> Path:
     import matplotlib
 
     matplotlib.use("Agg")
@@ -539,36 +558,54 @@ def render_candidate(candidate: Candidate, outdir: Path, mode: str, threshold: f
 
     labels = load_label_maps(candidate.label_path, mode)
     display_mask, _ = _central_component_mask(labels.valid_mask)
-    crop = _crop_slices(display_mask)
-    image = _masked_image_for_display(
-        _unsegmented_image(candidate.label_path, labels, image_weight, candidate.image_path),
+    crop = _crop_for_mode(display_mask, crop_mode)
+    raw_image = _unsegmented_image(candidate.label_path, labels, image_weight, candidate.image_path)
+    image = _image_for_display(
+        raw_image,
         display_mask,
+        show_full_frame=crop_mode == "full" and candidate.image_path is not None,
     )
-    vmin, vmax = _image_limits(image, display_mask)
+    image_limits_mask = labels.valid_mask if crop_mode == "full" else display_mask
+    vmin, vmax = _image_limits(image, image_limits_mask)
     segmented = _hard_rgb(labels, threshold, display_mask)
     outdir.mkdir(parents=True, exist_ok=True)
     output = outdir / f"{candidate.canonical_id}.segmentation.png"
-    fig, axes = plt.subplots(1, 2, figsize=(7.2, 3.8), constrained_layout=True)
+    fig, axes = plt.subplots(1, 2, figsize=(8.4, 4.7))
     if image.ndim == 3:
         axes[0].imshow(image[crop], origin="lower")
     else:
         cmap = plt.get_cmap("gray").copy()
         cmap.set_bad("white")
         axes[0].imshow(image[crop], origin="lower", cmap=cmap, vmin=vmin, vmax=vmax)
-    axes[0].set_title("Imagen sin segmentar")
+    axes[0].set_title("Unsegmented image", fontsize=12)
     axes[1].imshow(segmented[crop], origin="lower")
-    axes[1].set_title(f"Segmentación p>={threshold:.2f}")
+    axes[1].set_title(f"Segmentation p >= {threshold:.2f}", fontsize=12)
     for ax in axes:
         ax.set_xticks([])
         ax.set_yticks([])
-    fig.suptitle(_candidate_title(candidate), fontsize=10)
-    fig.legend(handles=_legend_handles(), loc="lower center", ncols=6, frameon=False, fontsize=8)
+    fig.suptitle(_candidate_title(candidate), fontsize=11, y=0.96)
+    fig.subplots_adjust(left=0.03, right=0.99, top=0.82, bottom=0.18, wspace=0.08)
+    fig.legend(
+        handles=_legend_handles(),
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.035),
+        ncols=6,
+        frameon=False,
+        fontsize=8,
+    )
     fig.savefig(output, dpi=180)
     plt.close(fig)
     return output
 
 
-def render_montage(candidates: list[Candidate], outdir: Path, mode: str, threshold: float, image_weight: str) -> Path:
+def render_montage(
+    candidates: list[Candidate],
+    outdir: Path,
+    mode: str,
+    threshold: float,
+    image_weight: str,
+    crop_mode: str,
+) -> Path:
     import matplotlib
 
     matplotlib.use("Agg")
@@ -577,29 +614,42 @@ def render_montage(candidates: list[Candidate], outdir: Path, mode: str, thresho
     outdir.mkdir(parents=True, exist_ok=True)
     output = outdir / "segmentation_examples_montage.png"
     rows = max(len(candidates), 1)
-    fig, axes = plt.subplots(rows, 2, figsize=(7.2, 3.1 * rows), squeeze=False, constrained_layout=True)
+    fig, axes = plt.subplots(rows, 2, figsize=(8.4, 3.6 * rows + 0.8), squeeze=False)
     for row_idx, candidate in enumerate(candidates):
         labels = load_label_maps(candidate.label_path, mode)
         display_mask, _ = _central_component_mask(labels.valid_mask)
-        crop = _crop_slices(display_mask)
-        image = _masked_image_for_display(
-            _unsegmented_image(candidate.label_path, labels, image_weight, candidate.image_path),
+        crop = _crop_for_mode(display_mask, crop_mode)
+        raw_image = _unsegmented_image(candidate.label_path, labels, image_weight, candidate.image_path)
+        image = _image_for_display(
+            raw_image,
             display_mask,
+            show_full_frame=crop_mode == "full" and candidate.image_path is not None,
         )
-        vmin, vmax = _image_limits(image, display_mask)
+        image_limits_mask = labels.valid_mask if crop_mode == "full" else display_mask
+        vmin, vmax = _image_limits(image, image_limits_mask)
         if image.ndim == 3:
             axes[row_idx, 0].imshow(image[crop], origin="lower")
         else:
             cmap = plt.get_cmap("gray").copy()
             cmap.set_bad("white")
             axes[row_idx, 0].imshow(image[crop], origin="lower", cmap=cmap, vmin=vmin, vmax=vmax)
-        axes[row_idx, 0].set_title(f"{candidate.canonical_id}\nimagen sin segmentar", fontsize=9)
+        axes[row_idx, 0].set_title(f"{candidate.canonical_id}\nunsegmented image", fontsize=9)
         axes[row_idx, 1].imshow(_hard_rgb(labels, threshold, display_mask)[crop], origin="lower")
-        axes[row_idx, 1].set_title("segmentación", fontsize=9)
+        axes[row_idx, 1].set_title("segmentation", fontsize=9)
         for ax in axes[row_idx]:
             ax.set_xticks([])
             ax.set_yticks([])
-    fig.legend(handles=_legend_handles(), loc="lower center", ncols=6, frameon=False, fontsize=8)
+    bottom = 0.12 if rows <= 2 else 0.04
+    top = 0.94 if rows <= 2 else 0.985
+    fig.subplots_adjust(left=0.03, right=0.99, top=top, bottom=bottom, hspace=0.35, wspace=0.08)
+    fig.legend(
+        handles=_legend_handles(),
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.015),
+        ncols=6,
+        frameon=False,
+        fontsize=8,
+    )
     fig.savefig(output, dpi=180)
     plt.close(fig)
     return output
@@ -740,10 +790,10 @@ def run(args: argparse.Namespace) -> int:
         raise SystemExit("No encontré candidatos que cumplan los criterios de selección")
 
     image_paths = [
-        render_candidate(candidate, outdir, args.label_mode, args.dominant_threshold, args.image_weight)
+        render_candidate(candidate, outdir, args.label_mode, args.dominant_threshold, args.image_weight, args.crop_mode)
         for candidate in candidates
     ]
-    montage_path = render_montage(candidates, outdir, args.label_mode, args.dominant_threshold, args.image_weight)
+    montage_path = render_montage(candidates, outdir, args.label_mode, args.dominant_threshold, args.image_weight, args.crop_mode)
     selected_csv = _write_selected_csv(outdir / "selected_segmentation_examples.csv", candidates)
     report_path = _write_markdown(outdir / "segmentation_examples_report.md", candidates, image_paths, montage_path, selected_csv)
     summary = {
@@ -753,6 +803,7 @@ def run(args: argparse.Namespace) -> int:
         "n_examples": len(candidates),
         "image_root": str(image_root or ""),
         "n_images_indexed": len(image_index),
+        "crop_mode": args.crop_mode,
         "images": [str(path) for path in image_paths],
     }
     print(json.dumps(summary, indent=2, sort_keys=True))
@@ -774,6 +825,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-disk-pixels", type=int, default=30)
     parser.add_argument("--min-component-fraction", type=float, default=0.80)
     parser.add_argument("--image-weight", choices=("light", "mass"), default="light")
+    parser.add_argument("--crop-mode", choices=("full", "component"), default="full")
     return parser
 
 

@@ -183,6 +183,7 @@ python -m validation.make_segmentation_examples \
   --n-examples 40 \
   --label-mode soft_mass \
   --dominant-threshold 0.50 \
+  --crop-mode full \
   --min-component-fraction 0.80
 ```
 
@@ -194,11 +195,16 @@ This writes:
 - `segmentation_examples_report.md`
 
 Each figure contains the matched galaxy image from `--image-root` next to a
-single colored segmentation map with a class legend. The image matcher scans
-PNG/JPG/NPZ files recursively and matches by `canonical_id`, `unit_id`, or
-`galaxy_id`. For publication figures the script keeps only the central
-connected component of the valid mask and, by default, requires it to contain
-at least 80% of the valid pixels. This avoids examples where disconnected edge
-islands appear after a blank gap. If this is too strict for a small run, lower
+single colored segmentation map with a class legend in English. The default
+`--crop-mode full` shows the full matched image frame, while the segmentation
+panel still displays only the central connected component of the valid label
+mask. This keeps the image visually complete without reintroducing disconnected
+segmentation islands at the edges. Use `--crop-mode component` only when a
+tight crop around the central labeled component is needed.
+
+The image matcher scans PNG/JPG/NPZ files recursively and matches by
+`canonical_id`, `unit_id`, or `galaxy_id`. For publication figures the script
+selects only examples where the central connected component contains at least
+80% of the valid pixels by default. If this is too strict for a small run, lower
 `--min-component-fraction`. To allow fallback to the internal QA proxy when an
 external image is missing, pass `--no-require-image`.
