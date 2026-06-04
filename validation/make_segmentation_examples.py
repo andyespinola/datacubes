@@ -451,7 +451,7 @@ def _load_npz_rgb(path: Path) -> np.ndarray:
     return _stretch_rgb(image[:, :, :3])
 
 
-def _load_external_rgb(path: Path) -> np.ndarray:
+def _load_external_rgb(path: Path, raster_origin: str) -> np.ndarray:
     import matplotlib.image as mpimg
 
     if path.suffix.lower() == ".npz":
@@ -470,6 +470,8 @@ def _load_external_rgb(path: Path) -> np.ndarray:
         image = np.repeat(image, 3, axis=2)
     if image.ndim != 3 or image.shape[2] < 3:
         raise ValueError(f"Imagen inválida en {path}: shape={image.shape}")
+    if raster_origin == "lower":
+        image = np.flipud(image)
     return np.clip(image[:, :, :3], 0.0, 1.0).astype(np.float32)
 
 
@@ -484,10 +486,16 @@ def _resize_rgb_to_shape(rgb: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
     return np.clip(resized, 0.0, 1.0).astype(np.float32)
 
 
-def _unsegmented_image(label_path: Path, labels: LabelMaps, image_weight: str, external_image: Path | None) -> np.ndarray:
+def _unsegmented_image(
+    label_path: Path,
+    labels: LabelMaps,
+    image_weight: str,
+    external_image: Path | None,
+    raster_origin: str,
+) -> np.ndarray:
     if external_image is not None:
         try:
-            return _resize_rgb_to_shape(_load_external_rgb(external_image), labels.valid_mask.shape)
+            return _resize_rgb_to_shape(_load_external_rgb(external_image, raster_origin), labels.valid_mask.shape)
         except Exception as exc:
             raise RuntimeError(f"No pude cargar la imagen emparejada {external_image}") from exc
 
@@ -582,6 +590,7 @@ def render_candidate(
     threshold: float,
     image_weight: str,
     crop_mode: str,
+    raster_origin: str,
 ) -> Path:
     import matplotlib
 
@@ -591,7 +600,7 @@ def render_candidate(
     labels = load_label_maps(candidate.label_path, mode)
     display_mask, _ = _central_component_mask(labels.valid_mask)
     crop = _crop_for_mode(display_mask, crop_mode)
-    raw_image = _unsegmented_image(candidate.label_path, labels, image_weight, candidate.image_path)
+    raw_image = _unsegmented_image(candidate.label_path, labels, image_weight, candidate.image_path, raster_origin)
     image = _image_for_display(
         raw_image,
         display_mask,
@@ -637,6 +646,7 @@ def render_montage(
     threshold: float,
     image_weight: str,
     crop_mode: str,
+    raster_origin: str,
 ) -> Path:
     import matplotlib
 
@@ -651,7 +661,7 @@ def render_montage(
         labels = load_label_maps(candidate.label_path, mode)
         display_mask, _ = _central_component_mask(labels.valid_mask)
         crop = _crop_for_mode(display_mask, crop_mode)
-        raw_image = _unsegmented_image(candidate.label_path, labels, image_weight, candidate.image_path)
+        raw_image = _unsegmented_image(candidate.label_path, labels, image_weight, candidate.image_path, raster_origin)
         image = _image_for_display(
             raw_image,
             display_mask,
@@ -827,10 +837,26 @@ def run(args: argparse.Namespace) -> int:
         raise SystemExit("No encontré candidatos que cumplan los criterios de selección")
 
     image_paths = [
-        render_candidate(candidate, outdir, args.label_mode, args.dominant_threshold, args.image_weight, args.crop_mode)
+        render_candidate(
+            candidate,
+            outdir,
+            args.label_mode,
+            args.dominant_threshold,
+            args.image_weight,
+            args.crop_mode,
+            args.raster_image_origin,
+        )
         for candidate in candidates
     ]
-    montage_path = render_montage(candidates, outdir, args.label_mode, args.dominant_threshold, args.image_weight, args.crop_mode)
+    montage_path = render_montage(
+        candidates,
+        outdir,
+        args.label_mode,
+        args.dominant_threshold,
+        args.image_weight,
+        args.crop_mode,
+        args.raster_image_origin,
+    )
     selected_csv = _write_selected_csv(outdir / "selected_segmentation_examples.csv", candidates)
     report_path = _write_markdown(outdir / "segmentation_examples_report.md", candidates, image_paths, montage_path, selected_csv)
     summary = {
@@ -841,6 +867,7 @@ def run(args: argparse.Namespace) -> int:
         "image_root": str(image_root or ""),
         "n_images_indexed": len(image_index),
         "crop_mode": args.crop_mode,
+        "raster_image_origin": args.raster_image_origin,
         "allow_image_ifu_mismatch": args.allow_image_ifu_mismatch,
         "min_center_valid_fraction": args.min_center_valid_fraction,
         "images": [str(path) for path in image_paths],
@@ -867,6 +894,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--center-aperture-fraction", type=float, default=0.12)
     parser.add_argument("--image-weight", choices=("light", "mass"), default="light")
     parser.add_argument("--crop-mode", choices=("full", "component"), default="full")
+    parser.add_argument("--raster-image-origin", choices=("lower", "upper"), default="lower")
     parser.add_argument("--allow-image-ifu-mismatch", action="store_true")
     return parser
 
