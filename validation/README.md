@@ -184,6 +184,7 @@ python -m validation.make_segmentation_examples \
   --label-mode soft_mass \
   --dominant-threshold 0.50 \
   --crop-mode full \
+  --min-center-valid-fraction 0.50 \
   --min-component-fraction 0.80
 ```
 
@@ -203,8 +204,15 @@ segmentation islands at the edges. Use `--crop-mode component` only when a
 tight crop around the central labeled component is needed.
 
 The image matcher scans PNG/JPG/NPZ files recursively and matches by
-`canonical_id`, `unit_id`, or `galaxy_id`. For publication figures the script
-selects only examples where the central connected component contains at least
-80% of the valid pixels by default. If this is too strict for a small run, lower
-`--min-component-fraction`. To allow fallback to the internal QA proxy when an
-external image is missing, pass `--no-require-image`.
+`canonical_id`, `unit_id`, or `galaxy_id`, but by default it does not allow a
+different IFU design to stand in for the selected label product. For example,
+`TNG50-...-0-127_v0.png` will not be used for
+`TNG50-...-0-61.labels.npz` unless `--allow-image-ifu-mismatch` is passed.
+
+For publication figures the script selects only examples where the central
+connected component contains at least 80% of the valid pixels and where the
+central aperture has at least 50% label coverage. This avoids hollow masks where
+the segmentation appears only as an annulus around an empty center. If this is
+too strict for a diagnostic run, lower `--min-component-fraction` or
+`--min-center-valid-fraction`. To allow fallback to the internal QA proxy when
+an external image is missing, pass `--no-require-image`.

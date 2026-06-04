@@ -61,6 +61,7 @@ class Candidate:
     class_fractions: dict[str, float]
     class_pixels: dict[str, int]
     component_fraction: float
+    center_valid_fraction: float
     median_pmax: float
     coherence_score: float | None
     v_over_sigma_ratio: float | None
@@ -144,10 +145,20 @@ def _image_rank(path: Path) -> tuple[int, int, str]:
     return suffix_rank, len(path.name), path.as_posix()
 
 
-def match_image_path(row: dict[str, str], image_index: dict[str, Path]) -> Path | None:
-    for token in sorted(_id_tokens(row), key=lambda item: -len(item)):
+def match_image_path(
+    row: dict[str, str],
+    image_index: dict[str, Path],
+    allow_ifu_mismatch: bool = False,
+) -> Path | None:
+    tokens = sorted(_id_tokens(row), key=lambda item: -len(item))
+    for token in tokens:
         if token in image_index:
             return image_index[token]
+
+    if not allow_ifu_mismatch:
+        return None
+
+    for token in tokens:
         # ImagesMangGenerator often writes canonical IDs as TNG...-ifu_v{view}.
         matches = [path for key, path in image_index.items() if key.startswith(token)]
         if matches:
@@ -220,6 +231,20 @@ def _central_component_mask(mask: np.ndarray) -> tuple[np.ndarray, float]:
     return selected, float(np.count_nonzero(selected) / np.count_nonzero(mask))
 
 
+def _center_valid_fraction(mask: np.ndarray, aperture_fraction: float) -> float:
+    mask = np.asarray(mask).astype(bool)
+    h, w = mask.shape
+    yy, xx = np.indices(mask.shape)
+    center_y = (h - 1) / 2.0
+    center_x = (w - 1) / 2.0
+    radius = max(float(aperture_fraction) * min(h, w), 1.0)
+    aperture = (yy - center_y) ** 2 + (xx - center_x) ** 2 <= radius**2
+    total = int(np.count_nonzero(aperture))
+    if total == 0:
+        return 0.0
+    return float(np.count_nonzero(mask & aperture) / total)
+
+
 def _segmentation_stats(labels: LabelMaps, threshold: float, analysis_mask: np.ndarray) -> tuple[dict[str, float], dict[str, int], float]:
     physical_indices = [labels.indices[name] for name in PHYSICAL_CLASSES]
     physical = labels.soft[physical_indices]
@@ -282,8 +307,11 @@ def select_candidates(
     min_bulge_pixels: int,
     min_disk_pixels: int,
     min_component_fraction: float,
+    min_center_valid_fraction: float,
+    center_aperture_fraction: float,
     image_index: dict[str, Path],
     require_image: bool,
+    allow_image_ifu_mismatch: bool,
     max_examples: int,
 ) -> list[Candidate]:
     matched_rows = _read_csv(matched_units)
@@ -293,7 +321,7 @@ def select_candidates(
         canonical_id = (row.get("canonical_id") or "").strip()
         if not canonical_id:
             continue
-        image_path = match_image_path(row, image_index)
+        image_path = match_image_path(row, image_index, allow_ifu_mismatch=allow_image_ifu_mismatch)
         if require_image and image_path is None:
             continue
         path = _label_path(labels_dir, canonical_id)
@@ -303,6 +331,9 @@ def select_candidates(
             labels = load_label_maps(path, mode)
             analysis_mask, component_fraction = _central_component_mask(labels.valid_mask)
             if component_fraction < min_component_fraction:
+                continue
+            center_valid_fraction = _center_valid_fraction(analysis_mask, center_aperture_fraction)
+            if center_valid_fraction < min_center_valid_fraction:
                 continue
             fractions, pixels, median_pmax = _segmentation_stats(labels, threshold, analysis_mask)
         except Exception:
@@ -323,6 +354,7 @@ def select_candidates(
                 class_fractions=fractions,
                 class_pixels=pixels,
                 component_fraction=component_fraction,
+                center_valid_fraction=center_valid_fraction,
                 median_pmax=median_pmax,
                 coherence_score=_finite_float(kin.get("coherence_score")),
                 v_over_sigma_ratio=_finite_float(kin.get("v_over_sigma_ratio")),
@@ -671,6 +703,7 @@ def _write_selected_csv(path: Path, candidates: list[Candidate]) -> Path:
         "test_b",
         "passes",
         "component_fraction",
+        "center_valid_fraction",
         "label_path",
         "image_path",
         *[f"frac_{name}" for name in PHYSICAL_CLASSES],
@@ -694,6 +727,7 @@ def _write_selected_csv(path: Path, candidates: list[Candidate]) -> Path:
                 "test_b": candidate.test_b,
                 "passes": candidate.passes,
                 "component_fraction": candidate.component_fraction,
+                "center_valid_fraction": candidate.center_valid_fraction,
                 "label_path": str(candidate.label_path),
                 "image_path": str(candidate.image_path or ""),
             }
@@ -722,14 +756,14 @@ def _write_markdown(path: Path, candidates: list[Candidate], image_paths: list[P
         "",
         "## Resumen de selección",
         "",
-        "| canonical_id | score | A | B | coherence | V/sigma ratio | sigma ratio | component frac | bulge frac | disk frac | bar frac | arms frac | other frac |",
-        "|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| canonical_id | score | A | B | coherence | V/sigma ratio | sigma ratio | component frac | center valid frac | bulge frac | disk frac | bar frac | arms frac | other frac |",
+        "|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for candidate in candidates:
         lines.append(
             f"| `{candidate.canonical_id}` | {_fmt(candidate.score, 2)} | {candidate.test_a or 'N/A'} | {candidate.test_b or 'N/A'} | "
             f"{_fmt(candidate.coherence_score, 2)} | {_fmt(candidate.v_over_sigma_ratio, 2)} | {_fmt(candidate.sigma_ratio, 2)} | "
-            f"{_fmt(candidate.component_fraction)} | "
+            f"{_fmt(candidate.component_fraction)} | {_fmt(candidate.center_valid_fraction)} | "
             f"{_fmt(candidate.class_fractions.get('bulge'))} | {_fmt(candidate.class_fractions.get('disk'))} | "
             f"{_fmt(candidate.class_fractions.get('bar'))} | {_fmt(candidate.class_fractions.get('arms'))} | "
             f"{_fmt(candidate.class_fractions.get('other'))} |"
@@ -782,8 +816,11 @@ def run(args: argparse.Namespace) -> int:
         min_bulge_pixels=args.min_bulge_pixels,
         min_disk_pixels=args.min_disk_pixels,
         min_component_fraction=args.min_component_fraction,
+        min_center_valid_fraction=args.min_center_valid_fraction,
+        center_aperture_fraction=args.center_aperture_fraction,
         image_index=image_index,
         require_image=args.require_image,
+        allow_image_ifu_mismatch=args.allow_image_ifu_mismatch,
         max_examples=args.n_examples,
     )
     if not candidates:
@@ -804,6 +841,8 @@ def run(args: argparse.Namespace) -> int:
         "image_root": str(image_root or ""),
         "n_images_indexed": len(image_index),
         "crop_mode": args.crop_mode,
+        "allow_image_ifu_mismatch": args.allow_image_ifu_mismatch,
+        "min_center_valid_fraction": args.min_center_valid_fraction,
         "images": [str(path) for path in image_paths],
     }
     print(json.dumps(summary, indent=2, sort_keys=True))
@@ -824,8 +863,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-bulge-pixels", type=int, default=10)
     parser.add_argument("--min-disk-pixels", type=int, default=30)
     parser.add_argument("--min-component-fraction", type=float, default=0.80)
+    parser.add_argument("--min-center-valid-fraction", type=float, default=0.50)
+    parser.add_argument("--center-aperture-fraction", type=float, default=0.12)
     parser.add_argument("--image-weight", choices=("light", "mass"), default="light")
     parser.add_argument("--crop-mode", choices=("full", "component"), default="full")
+    parser.add_argument("--allow-image-ifu-mismatch", action="store_true")
     return parser
 
 
