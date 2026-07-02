@@ -1,0 +1,7 @@
+data:
+  local_galaxy_ids:
+    - TNG50-87-155298
+    - TNG50-87-192324
+
+extractor:
+  max_particles: 250000

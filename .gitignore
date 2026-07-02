@@ -38,6 +38,7 @@ structural_labeling/outputs/
 deploy_mangia_10k/rss_input/
 deploy_mangia_10k/output/
 ImagesMangGenerator/data/
+soft_labels_generation_v2_1/outputs*/
 
 # Artefactos temporales de sistema/editor
 .DS_Store

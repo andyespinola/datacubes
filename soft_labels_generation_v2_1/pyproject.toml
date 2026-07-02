@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aperturenet-labels-v2"
+version = "0.1.0"
+description = "Soft label generation v2.1 for MaNGIA/TNG50 structural labels"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy",
+  "scipy",
+  "h5py",
+  "astropy",
+  "matplotlib",
+  "pyyaml",
+  "pydantic",
+  "requests",
+]
+
+[project.scripts]
+aperturenet-labels = "aperturenet_labels.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
