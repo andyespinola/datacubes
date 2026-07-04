@@ -1,0 +1,2 @@
+[console_scripts]
+aperturenet-labels = aperturenet_labels.cli.main:app

@@ -1,0 +1,5 @@
+# A1_normconv: + NormConv en tronco fisico y decoder (specs/45 P1).
+# Criterio de adopcion: specs/45 'Plan de ablacion'.
+_base_: ../base.yaml
+model.physical: normconv
+model.decoder: normconv

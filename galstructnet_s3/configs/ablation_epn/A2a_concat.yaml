@@ -1,0 +1,6 @@
+# A2a_concat: A1 + fusion concat (contrafactual barato).
+# Criterio de adopcion: specs/45 'Plan de ablacion'.
+_base_: ../base.yaml
+model.physical: normconv
+model.decoder: normconv
+model.fusion: concat

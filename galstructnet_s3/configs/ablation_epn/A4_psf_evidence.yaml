@@ -1,0 +1,11 @@
+# A4_psf_evidence: A3 + PSF en espacio de evidencia (specs/45 P2). Etapa 3.
+# Criterio de adopcion: specs/45 'Plan de ablacion'.
+_base_: ../base.yaml
+model.physical: normconv
+model.decoder: normconv
+model.fusion: precision
+model.head: evidence
+model.psf_mode: evidence
+training.stage: 3
+loss.weights.psf: 0.4
+loss.weights.boundary: 0.3

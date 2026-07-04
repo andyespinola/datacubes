@@ -1,0 +1,6 @@
+# A2c_precision: A1 + PrecisionGatedFusion (specs/45 P3). Default v3.
+# Criterio de adopcion: specs/45 'Plan de ablacion'.
+_base_: ../base.yaml
+model.physical: normconv
+model.decoder: normconv
+model.fusion: precision

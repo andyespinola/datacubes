@@ -1,0 +1,15 @@
+numpy
+scipy
+scikit-learn
+h5py
+astropy
+pydantic>=2
+pyyaml
+typer
+structlog
+
+[dev]
+pytest
+pytest-cov
+ruff
+mypy

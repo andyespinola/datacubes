@@ -1,0 +1,17 @@
+README.md
+pyproject.toml
+src/aperturenet_labels/__init__.py
+src/aperturenet_labels.egg-info/PKG-INFO
+src/aperturenet_labels.egg-info/SOURCES.txt
+src/aperturenet_labels.egg-info/dependency_links.txt
+src/aperturenet_labels.egg-info/entry_points.txt
+src/aperturenet_labels.egg-info/requires.txt
+src/aperturenet_labels.egg-info/top_level.txt
+src/aperturenet_labels/baselines/__init__.py
+src/aperturenet_labels/cli/__init__.py
+src/aperturenet_labels/core/__init__.py
+src/aperturenet_labels/io/__init__.py
+src/aperturenet_labels/phase_a/__init__.py
+src/aperturenet_labels/phase_b/__init__.py
+src/aperturenet_labels/phase_c/__init__.py
+src/aperturenet_labels/schemas/__init__.py

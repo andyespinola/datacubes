@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "galstructnet-s3"
+version = "0.1.0"
+description = "GalStructNet-S3: per-spaxel probabilistic structural segmentation of IFU cubes with physically anchored uncertainty (EPN)"
+requires-python = ">=3.11"
+dependencies = [
+  "torch>=2.2",
+  "numpy>=1.26",
+  "scipy>=1.11",
+  "h5py>=3.10",
+  "einops>=0.7",
+  "timm>=0.9",          # Swin-T
+  "pyyaml>=6.0",
+  "wandb>=0.16",
+  "torchmetrics>=1.3",
+]
+
+[project.optional-dependencies]
+mamba = ["mamba-ssm>=1.2"]
+dev = ["pytest>=8.0", "ruff>=0.4", "mypy>=1.9"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+
+[tool.ruff.lint.per-file-ignores]
+# patron pytest.importorskip: los imports del paquete van despues del skip
+"tests/**" = ["E402"]

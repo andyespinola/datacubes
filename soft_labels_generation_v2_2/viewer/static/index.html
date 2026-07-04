@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ApertureNet — Visor de Segmentación</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section class="panel panel-meta">
+        <div class="panel-head">
+          <h1>Segmentación v2</h1>
+          <p>Etiquetas estructurales por spaxel (ApertureNet-S3)</p>
+        </div>
+
+        <label class="field-label" for="file-select">Galaxia (dataset entry)</label>
+        <select id="file-select"></select>
+
+        <label class="field-label">Capa</label>
+        <div id="layer-buttons" class="toolbar toolbar-wrap">
+          <button data-layer="segmentation" class="active" type="button">Segmentación</button>
+          <button data-layer="class_prob" type="button">P(clase)</button>
+          <button data-layer="n_eff" type="button">N_eff</button>
+          <button data-layer="m_valid" type="button">M_valid</button>
+          <button data-layer="cube_overview" type="button">Cubo medio</button>
+          <button data-layer="cube_slice" type="button">Cubo slice</button>
+        </div>
+
+        <div id="class-chip-row" class="chip-row hidden"></div>
+
+        <label class="field-label" for="pipe3d-select">Mapa pyPipe3D</label>
+        <select id="pipe3d-select">
+          <option value="">— ninguno —</option>
+        </select>
+
+        <label class="field-label">Variante de etiqueta</label>
+        <div id="variant-buttons" class="toolbar toolbar-wrap">
+          <button data-variant="mass" class="active" type="button">masa</button>
+          <button data-variant="light" type="button">luz</button>
+          <button data-variant="mass_psf" type="button">masa+PSF</button>
+          <button data-variant="light_psf" type="button">luz+PSF</button>
+        </div>
+
+        <label class="toolbar-small"><input id="toggle-valid-overlay" type="checkbox" checked />
+          Atenuar fuera de M_valid</label>
+
+        <label class="field-label" for="slice-slider">Índice espectral (capa "Cubo slice")</label>
+        <input id="slice-slider" type="range" min="0" max="0" value="0" />
+        <p id="slice-label">-</p>
+
+        <div id="meta-grid" class="meta-grid"></div>
+      </section>
+
+      <section class="panel panel-map">
+        <div class="panel-head">
+          <h2>Mapa</h2>
+          <p id="map-caption">Selecciona una galaxia para comenzar</p>
+        </div>
+        <canvas id="map-canvas" width="666" height="666"></canvas>
+        <div id="map-legend" class="legend"></div>
+      </section>
+
+      <section class="panel panel-spaxel">
+        <div class="panel-head">
+          <h2>Inspector de spaxel</h2>
+          <p id="selection-caption">Haz clic en un spaxel del mapa</p>
+        </div>
+
+        <h3 class="sub-head">Probabilidades por clase</h3>
+        <svg id="prob-svg" viewBox="0 0 420 210" preserveAspectRatio="xMidYMid meet"></svg>
+
+        <h3 class="sub-head">Espectro del cubo IFU</h3>
+        <svg id="spectrum-svg" viewBox="0 0 460 240" preserveAspectRatio="xMidYMid meet"></svg>
+
+        <div id="selection-meta" class="meta-grid"></div>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

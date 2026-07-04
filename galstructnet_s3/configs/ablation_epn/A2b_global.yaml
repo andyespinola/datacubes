@@ -1,0 +1,6 @@
+# A2b_global: A1 + cross-attention global (fusion v2).
+# Criterio de adopcion: specs/45 'Plan de ablacion'.
+_base_: ../base.yaml
+model.physical: normconv
+model.decoder: normconv
+model.fusion: global

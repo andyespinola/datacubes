@@ -1,0 +1,3 @@
+# A0_baseline: Baseline estandar completo (v2 corregida + ancla).
+# Criterio de adopcion: specs/45 'Plan de ablacion'.
+_base_: ../base.yaml

@@ -44,3 +44,10 @@ soft_labels_generation_v2_1/outputs*/
 .DS_Store
 *.swp
 *.swo
+
+# Configuracion local de herramientas (no versionar)
+.claude/
+.vscode/
+
+# Datos pesados a nivel raiz
+/data/

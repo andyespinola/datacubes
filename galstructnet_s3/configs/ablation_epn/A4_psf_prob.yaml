@@ -1,0 +1,11 @@
+# A4_psf_prob: A3 + PSF sobre prob (baseline del modo). Etapa 3 (w_psf>0).
+# Criterio de adopcion: specs/45 'Plan de ablacion'.
+_base_: ../base.yaml
+model.physical: normconv
+model.decoder: normconv
+model.fusion: precision
+model.head: evidence
+model.psf_mode: prob
+training.stage: 3
+loss.weights.psf: 0.4
+loss.weights.boundary: 0.3

@@ -1,0 +1,20 @@
+# Galaxias piloto (reemplazan al TNG50-87-141934 de las specs, sin datos locales).
+# 155298: masiva, dominada por halo (MORDOR halo=0.56), SIN barra.
+# 192324: disco con pseudo-bulbo, barrada (MORDOR A2max=0.228, R_peak=1.31 kpc).
+
+pilots:
+  - galaxy_id: TNG50-87-155298
+    canonical_id: TNG50-87-155298-0-127
+    view: 0
+  - galaxy_id: TNG50-87-192324
+    canonical_id: TNG50-87-192324-0-127
+    view: 0
+
+data_dir: ../data
+ssp_template: ../kinematic_moments/templates/MaStar_CB19.slog_1_5.fits.gz
+
+# Notas de validación (2026-06-10):
+# - Convención de orientación: LOS = view_vector_from_index (v1, +x para view 0)
+#   con raster del cubo (filas, cols) = (x_proy, -y_proy). Validada vs pyPipe3D:
+#   155298 Spearman 0.98 / centroide 0.05 px; 192324 0.87 / 0.85 px (mapa plano).
+# - API TNG inaccesible desde esta red (timeout): potential_method=octree.

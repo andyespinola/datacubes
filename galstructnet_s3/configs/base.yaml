@@ -1,0 +1,35 @@
+# GalStructNet-S3 - configuracion base (Etapa 2 por defecto)
+# Fuente de verdad: specs/. Las claves de `model` son las banderas de la
+# escalera A0-A4 (specs/45 'Plan de ablacion', specs/60 'Escalera').
+data:
+  root: data/dataset_entries
+  target: both               # v3 entrena ambas ponderaciones (C3)
+  restframe: false           # ablar (specs/10)
+  carry_full_ivar: false
+  views_per_epoch: 4         # 2 = ahorro ~50% (specs/10 notas)
+model:
+  physical: std              # {std, normconv, moments}
+  fusion: global             # {concat, global, precision}
+  decoder: std               # {std, normconv}
+  head: std                  # {std, evidence}
+  psf_mode: prob             # {prob, evidence}
+  spectral:
+    backbone: mamba          # {mamba, conv1d} - ablacion A8 obligatoria
+    d_model: 128
+    return_sequence: false
+loss:
+  kappa: 0.5                 # ablar {0.25, 0.5, 1.0}
+  kl_direction: forward      # {forward, reverse}
+  n_eff_cap: p99             # leido de norm_stats.json
+  weights: {seg: 1.0, dice: 0.5, boundary: 0.0, psf: 0.0, phys: 0.1,
+            consist: 0.0, weak: 0.0, lambda_mass: 0.3}
+training:
+  stage: 2
+  epochs: 100
+  batch_size: 4
+  lr: 5.0e-5
+  weight_decay: 0.01
+  warmup_epochs: 10
+  precision: bf16
+  clip_norm: 1.0
+  seed: 42

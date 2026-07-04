@@ -1,0 +1,19 @@
+Metadata-Version: 2.4
+Name: aperturenet-labels
+Version: 2.0.0
+Summary: Pipeline v2 de generación de etiquetas estructurales por spaxel para ApertureNet-S3
+Requires-Python: >=3.10
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: scikit-learn
+Requires-Dist: h5py
+Requires-Dist: astropy
+Requires-Dist: pydantic>=2
+Requires-Dist: pyyaml
+Requires-Dist: typer
+Requires-Dist: structlog
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
