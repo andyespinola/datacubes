@@ -20,6 +20,11 @@ Uso típico (ver docs/RUN_BATCH_REMOTE.md):
 Memoria: cada worker puede pedir hasta ~23 GB (galaxia mayor). Con 128 GB,
 --workers 4 deja holgura (4×23 = 92 GB). Súbelo solo si la muestra es de
 galaxias pequeñas.
+
+Salida: por defecto los entries llevan SOLO las etiquetas (~0.6 MB c/u,
+~6 GB para 10k); el cubo NO se embebe (producto independiente, referenciado
+en metadata.cube_file). Usa --copy-cube para embeberlo (~850 GB, no
+recomendado). Con --cleanup, el disco total ronda ~20 GB.
 """
 from __future__ import annotations
 
@@ -98,18 +103,31 @@ def build_manifest(input_dir: Path, catalog_path: Path) -> list[dict]:
 # Ejecución
 # --------------------------------------------------------------------------
 
+def _resolve_aux(name: str, explicit: Path | None, input_dir: Path) -> Path | None:
+    """Localiza un auxiliar por prioridad: explícito > USB (input-dir) > aux/."""
+    if explicit is not None and explicit.exists():
+        return explicit
+    for cand in (input_dir / name, REPO / "aux" / name):
+        if cand.exists():
+            return cand
+    return None
+
+
 def entry_path(output_dir: Path, gal: str, view: int) -> Path:
     return output_dir / "output" / "dataset_entries" / f"{gal}_v{view}.h5"
 
 
 def run_one(args_tuple) -> dict:
-    (gal, view, manifest_path, output_dir, ssp, cleanup, timeout) = args_tuple
+    (gal, view, manifest_path, output_dir, ssp, cleanup, timeout,
+     copy_cube) = args_tuple
     cmd = [sys.executable, str(REPO / "scripts" / "label_one.py"),
            "--manifest", str(manifest_path), "--galaxy-id", gal,
            "--view", str(view), "--output-dir", str(output_dir),
            "--ssp", str(ssp)]
     if cleanup:
         cmd.append("--cleanup")
+    if copy_cube:
+        cmd.append("--copy-cube")
     t0 = time.time()
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True,
@@ -137,16 +155,18 @@ def main() -> None:
                     help="Directorio (USB) con los cubos + cutouts + metadatos")
     ap.add_argument("--output-dir", required=True, type=Path,
                     help="Disco local rápido para intermedios + entries")
-    ap.add_argument("--ssp", type=Path, default=REPO / "aux" /
-                    "MaStar_CB19.slog_1_5.fits.gz")
-    ap.add_argument("--catalog", type=Path,
-                    default=REPO / "aux" / "MaNGIA_catalog.fits")
-    ap.add_argument("--mordor", type=Path,
-                    default=REPO / "aux" / "morphs_kinematic_bars.hdf5")
+    # auxiliares: por defecto None -> se resuelven desde la USB (input-dir)
+    # y, si no están ahí, desde aux/ del repo (ver _resolve_aux).
+    ap.add_argument("--ssp", type=Path, default=None)
+    ap.add_argument("--catalog", type=Path, default=None)
+    ap.add_argument("--mordor", type=Path, default=None)
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--timeout-sec", type=int, default=3600)
     ap.add_argument("--cleanup", action="store_true",
                     help="Borra intermedios tras cada entry (ahorra ~0.5 GB/gal)")
+    ap.add_argument("--copy-cube", action="store_true",
+                    help="Embebe el cubo en cada entry (~85 MB). Por defecto NO: "
+                         "entries solo-etiquetas (~0.6 MB), el cubo va aparte.")
     ap.add_argument("--limit", type=int, default=0,
                     help="Procesa solo las primeras N (prueba); 0 = todas")
     ap.add_argument("--no-qa", action="store_true",
@@ -157,17 +177,22 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     (out / "output" / "dataset_entries").mkdir(parents=True, exist_ok=True)
 
-    # dependencias que la Fase A busca EN el output-dir
-    for aux in (args.mordor,):
-        dst = out / aux.name
-        if not dst.exists():
-            if not aux.exists():
-                sys.exit(f"FALTA dependencia: {aux} (usar --mordor). Necesaria "
-                         f"para los priors MORDOR del clasificador.")
-            shutil.copy(aux, dst)
-    for aux in (args.ssp, args.catalog):
-        if not aux.exists():
-            sys.exit(f"FALTA dependencia: {aux}")
+    # resolver auxiliares: prioridad explícito > USB (input-dir) > repo aux/.
+    # El usuario mantiene TODOS los inputs (incl. catálogo y MORDOR) en la USB.
+    ssp = _resolve_aux("MaStar_CB19.slog_1_5.fits.gz", args.ssp, args.input_dir)
+    catalog = _resolve_aux("MaNGIA_catalog.fits", args.catalog, args.input_dir)
+    mordor = _resolve_aux("morphs_kinematic_bars.hdf5", args.mordor,
+                          args.input_dir)
+    for name, pth in (("SSP", ssp), ("catálogo", catalog), ("MORDOR", mordor)):
+        if pth is None:
+            sys.exit(f"FALTA {name}: no está en la USB ({args.input_dir}) ni en "
+                     f"{REPO/'aux'} ni se pasó por argumento.")
+    print(f"  SSP={ssp}\n  catálogo={catalog}\n  MORDOR={mordor}", flush=True)
+    # la Fase A busca MORDOR EN el output-dir: copiarlo ahí
+    dst = out / mordor.name
+    if not dst.exists():
+        shutil.copy(mordor, dst)
+    args.catalog = catalog  # usado por build_manifest más abajo
 
     print(f"[{time.strftime('%H:%M:%S')}] construyendo manifest desde "
           f"{args.input_dir} ...", flush=True)
@@ -196,8 +221,8 @@ def main() -> None:
 
     prog = open(out / "batch_progress.jsonl", "a")
     results = []
-    tasks = [(g, v, manifest_path, out, args.ssp, args.cleanup,
-              args.timeout_sec) for g, v in pending]
+    tasks = [(g, v, manifest_path, out, ssp, args.cleanup,
+              args.timeout_sec, args.copy_cube) for g, v in pending]
     t_start = time.time()
     with ProcessPoolExecutor(max_workers=args.workers) as ex:
         futs = {ex.submit(run_one, t): t[0] for t in tasks}

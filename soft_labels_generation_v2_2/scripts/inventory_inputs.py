@@ -49,6 +49,11 @@ def main() -> None:
                          "lento; hazlo si sospechas cutouts 'completos').")
     args = ap.parse_args()
 
+    # el catálogo vive en la USB junto a los cubos; auto-detectar si no se pasa
+    if args.catalog is None:
+        cand = args.input_dir / "MaNGIA_catalog.fits"
+        args.catalog = cand if cand.exists() else None
+
     catalog_ids = None
     if args.catalog and args.catalog.exists():
         from astropy.io import fits

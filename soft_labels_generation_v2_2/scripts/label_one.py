@@ -34,6 +34,10 @@ def main() -> int:
                     help="Borra intermedios phase_a/phase_b tras un entry OK "
                          "(ahorra ~0.5 GB/galaxia; el resume sigue funcionando "
                          "a nivel de galaxia porque comprueba el entry final).")
+    ap.add_argument("--copy-cube", action="store_true",
+                    help="Embebe el cubo IFU en el entry (~85 MB c/u). Por "
+                         "defecto NO se copia: entry solo-etiquetas (~0.6 MB), "
+                         "el cubo queda como referencia (producto independiente).")
     args = ap.parse_args()
 
     from aperturenet_labels.cli.main import (run_phase_a, run_phase_b,
@@ -57,7 +61,8 @@ def main() -> int:
 
         ctx_a = run_phase_a(row, args.output_dir, args.ssp)
         ctx_b = run_phase_b(row, args.output_dir, ctx_a)
-        entry = run_phase_c(row, args.output_dir, ctx_a, ctx_b)
+        entry = run_phase_c(row, args.output_dir, ctx_a, ctx_b,
+                            copy_cube=args.copy_cube)
         report = packer.validate_dataset_entry(entry)
 
         if args.cleanup:

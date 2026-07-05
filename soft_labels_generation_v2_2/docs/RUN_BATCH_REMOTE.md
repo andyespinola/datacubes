@@ -24,9 +24,9 @@ Busca en el servidor y anota las rutas reales (pueden variar):
 |---|---|---|
 | Repo | donde clonaste `soft_labels_generation_v2_2` | contiene `scripts/`, `src/` |
 | Cubos + inputs TNG | USB, p. ej. `/run/media/aespinola/ADATA HM800/datacubes/` | **la ruta tiene un espacio → entre comillas siempre** |
-| `MaNGIA_catalog.fits` | **ya en el repo: `aux/`** | 0.5 MB; da re_kpc y repeat_count |
-| SSP template `MaStar_CB19.slog_1_5.fits.gz` | **ya en el repo: `aux/`** | 10.6 MB |
-| MORDOR `morphs_kinematic_bars.hdf5` | **ya en el repo: `aux/`** | 50 MB; priors del clasificador |
+| `MaNGIA_catalog.fits` | **en la USB `datacubes/`** (junto a los cubos) | 0.5 MB; da re_kpc y repeat_count |
+| SSP template `MaStar_CB19.slog_1_5.fits.gz` | **en la USB `datacubes/`** | 10.6 MB |
+| MORDOR `morphs_kinematic_bars.hdf5` | **en la USB `datacubes/`** | 50 MB; priors del clasificador |
 | Disco local rápido para OUTPUT | NO la USB | ver §2 (necesita cientos de GB) |
 
 Comando de búsqueda sugerido:
@@ -36,11 +36,15 @@ find / -name "MaNGIA_catalog.fits" 2>/dev/null
 find / -name "morphs_kinematic_bars.hdf5" 2>/dev/null
 ls "/run/media/aespinola/ADATA HM800/datacubes/" | head
 ```
-Los tres auxiliares (SSP, catálogo, MORDOR) **vienen committeados en `aux/`**
-del repo — no hay que buscarlos. Verifícalo:
+**TODOS los inputs están en la USB `datacubes/`**: cubos, cutouts, phase2,
+subhalo.json, cube_maps, y también el catálogo (`MaNGIA_catalog.fits`), el
+MORDOR (`morphs_kinematic_bars.hdf5`) y el SSP (`MaStar_CB19...fits.gz`). Los
+scripts los resuelven automáticamente desde ahí (prioridad: argumento > USB >
+`aux/` del repo, que es solo un respaldo). Verifícalo:
 ```bash
-ls -la aux/   # MaStar_CB19...fits.gz, MaNGIA_catalog.fits, morphs_kinematic_bars.hdf5
+ls "/run/media/aespinola/ADATA HM800/datacubes/" | grep -E "MaNGIA_catalog|morphs_kinematic|MaStar" 
 ```
+Si alguno NO está en la USB, o lo copias ahí, o pásalo con `--ssp/--catalog/--mordor`.
 
 ## 2. Requisitos de disco y memoria (IMPORTANTE)
 
@@ -48,13 +52,17 @@ ls -la aux/   # MaStar_CB19...fits.gz, MaNGIA_catalog.fits, morphs_kinematic_bar
   usar `--workers 4` (4×23 = 92 GB, con holgura). No subas workers salvo que
   el inventario muestre galaxias mayormente pequeñas.
 - **Disco (output):**
-  - `dataset_entries`: ~85 MB/galaxia → **~850 GB para 10k**.
-  - intermedios `phase_a`: ~0.5 GB/galaxia → **~5 TB si NO se limpian**.
-  - **Usa `--cleanup`** en `run_batch.py`: borra los intermedios tras cada
-    entry OK. Reduce el pico de intermedios a ~(workers × 0.5 GB). El resume
-    sigue funcionando (se basa en el entry final, no en los intermedios).
-  - Necesitas **~1 TB libre** en el disco de output con `--cleanup`.
-- El output NO debe ir a la USB (lenta y probablemente sin espacio).
+  - `dataset_entries` (SOLO etiquetas, por defecto): ~0.6 MB/galaxia →
+    **~6 GB para 10k**. El cubo NO se embebe (es un producto independiente;
+    el entry guarda una referencia `metadata.cube_file`). Con `--copy-cube`
+    se embebería el cubo (~85 MB c/u → ~850 GB) — NO recomendado.
+  - intermedios `phase_a` durante el proceso: ~0.5 GB/galaxia → **~5 TB si NO
+    se limpian**. **Usa `--cleanup`**: los borra tras cada entry OK; el pico
+    baja a ~(workers × 0.5 GB) ≈ 2 GB. El resume sigue funcionando (mira el
+    entry final, no los intermedios).
+  - Con `--cleanup` (default de etiquetas-solo) necesitas **~20 GB libres**,
+    no 1 TB. El disco de output NO tiene que ser enorme.
+- Aun así, el output NO debe ir a la USB (lenta).
 
 ## 3. Entorno Python
 
@@ -76,9 +84,8 @@ grep -n "permutation_v2.2" src/aperturenet_labels/phase_a/classifier.py
 ```bash
 python scripts/inventory_inputs.py \
   --input-dir "/run/media/aespinola/ADATA HM800/datacubes" \
-  --catalog aux/MaNGIA_catalog.fits \
-  --check-dm-in-cutout \
-  --out inventory.csv
+  --check-dm-in-cutout --out inventory.csv
+# (el catálogo se autodetecta desde la USB; --catalog solo si está en otro sitio)
 ```
 Lee el resumen. Estados posibles por galaxia:
 - `COMPLETO` — listo para procesar.
@@ -145,15 +152,15 @@ background (`nohup ... &`) y monitorea, igual que el batch (§7).
 python scripts/run_batch.py \
   --input-dir  "/run/media/aespinola/ADATA HM800/datacubes" \
   --output-dir /datos/labels_out \
-  --ssp        aux/MaStar_CB19.slog_1_5.fits.gz \
-  --catalog    aux/MaNGIA_catalog.fits \
-  --mordor     aux/morphs_kinematic_bars.hdf5 \
   --workers 4 --timeout-sec 3600 --cleanup --limit 8 --no-qa
+# SSP/catálogo/MORDOR se resuelven solos desde la USB (input-dir).
 ```
 Verifica que:
 - El manifest reporta un número razonable de "galaxias con inputs completos".
 - Las 8 terminan en `ok` (no `error`/`timeout`).
-- Se crearon 8 archivos en `/datos/labels_out/output/dataset_entries/`.
+- Se crearon 8 archivos en `/datos/labels_out/output/dataset_entries/`,
+  pequeños (~0.6 MB, solo etiquetas — el cubo NO va embebido, es
+  independiente; `metadata.cube_file` guarda el nombre del cubo).
 - Un entry abre bien y su clasificador usó el fix:
 ```bash
 python - <<'PY'
@@ -174,9 +181,6 @@ mkdir -p /datos/labels_out
 nohup python scripts/run_batch.py \
   --input-dir  "/run/media/aespinola/ADATA HM800/datacubes" \
   --output-dir /datos/labels_out \
-  --ssp aux/MaStar_CB19.slog_1_5.fits.gz \
-  --catalog aux/MaNGIA_catalog.fits \
-  --mordor aux/morphs_kinematic_bars.hdf5 \
   --workers 4 --timeout-sec 3600 --cleanup \
   > /datos/labels_out/batch.log 2>&1 &
 echo "PID $!"

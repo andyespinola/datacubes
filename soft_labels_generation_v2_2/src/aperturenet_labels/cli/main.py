@@ -102,7 +102,8 @@ def run_phase_b(row: ManifestRow, data_dir: Path, ctx: dict, force: bool = False
     return {"view": view, "projection": projection, "mask": mask}
 
 
-def run_phase_c(row: ManifestRow, data_dir: Path, ctx_a: dict, ctx_b: dict, force: bool = False) -> Path:
+def run_phase_c(row: ManifestRow, data_dir: Path, ctx_a: dict, ctx_b: dict,
+                force: bool = False, copy_cube: bool = True) -> Path:
     paths = ctx_a["paths"]
     gal = manifest_mod.galaxy_id(row.snapshot, row.subhalo_id)
     priors = ctx_a["priors"]
@@ -140,6 +141,7 @@ def run_phase_c(row: ManifestRow, data_dir: Path, ctx_a: dict, ctx_b: dict, forc
         mask=ctx_b["mask"],
         qa_report_path=paths["qa"],
         output_path=paths["entry"],
+        config=packer.PackerConfig(copy_cube=copy_cube),
     )
 
 

@@ -36,6 +36,11 @@ class PackerConfig(BaseModel):
     compression: str = "lzf"
     target_size: int = 74
     pad_value: float = 0.0
+    copy_cube: bool = True   # False = entry SOLO etiquetas (~0.6 MB); el cubo
+    #                          queda como referencia (metadata.cube_file). Para
+    #                          10k: ~6 GB en vez de ~850 GB. El cubo es un
+    #                          producto independiente (no se transporta con las
+    #                          etiquetas).
 
 
 def pad_to(arr: np.ndarray, target: int, pad_value: float = 0.0) -> np.ndarray:
@@ -70,8 +75,15 @@ def run_packer(
     t0 = time.time()
     tgt = config.target_size
 
-    flux, error, wave = load_cube_flux(cube_path)
-    cube74 = pad_to(flux, tgt)
+    if config.copy_cube:
+        flux, error, wave = load_cube_flux(cube_path)
+        cube74 = pad_to(flux, tgt)
+        native_hw = tuple(flux.shape[1:])
+    else:
+        # producto solo-etiquetas: no se carga el cubo (grid nativo desde la
+        # máscara, que ya está a resolución nativa antes del padding)
+        cube74 = wave = None
+        native_hw = tuple(mask["M_valid"].shape)
     y_mass = pad_to(projection["Y_mass_raw"], tgt)
     y_mass_psf = pad_to(projection["Y_mass_psf"], tgt)
     y_lum = pad_to(projection["Y_lum_raw"], tgt)
@@ -91,15 +103,21 @@ def run_packer(
         meta.attrs["subhalo_id"] = subhalo_id
         meta.attrs["view_vector"] = np.asarray(view_vector, dtype=np.float64)
         meta.attrs["generated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-        meta.attrs["original_grid"] = np.asarray(flux.shape[1:], dtype=np.int64)
+        meta.attrs["original_grid"] = np.asarray(native_hw, dtype=np.int64)
         meta.attrs["padded_grid"] = np.asarray([tgt, tgt], dtype=np.int64)
+        # referencia al cubo (producto independiente); el consumidor lo carga
+        # por su cuenta desde el directorio de cubos usando este nombre.
+        meta.attrs["cube_file"] = Path(cube_path).name
+        meta.attrs["cube_embedded"] = bool(config.copy_cube)
 
         inputs = f.create_group("inputs")
-        d = inputs.create_dataset(
-            "cube_ifu", data=cube74.astype(np.float32), compression=config.compression
-        )
-        d.attrs["units"] = "1e-16 erg/s/cm^2/Å"
-        inputs.create_dataset("wavelength", data=wave.astype(np.float32))
+        if config.copy_cube:
+            d = inputs.create_dataset(
+                "cube_ifu", data=cube74.astype(np.float32),
+                compression=config.compression
+            )
+            d.attrs["units"] = "1e-16 erg/s/cm^2/Å"
+            inputs.create_dataset("wavelength", data=wave.astype(np.float32))
         if config.include_pipe3d and pipe3d_maps_path:
             p3d = load_pipe3d_maps(pipe3d_maps_path)
             g = inputs.create_group("pipe3d_maps")
@@ -154,12 +172,13 @@ def validate_dataset_entry(path: str | Path) -> dict:
     """Roundtrip de validación: estructura, shapes, dtypes, sin NaN en labels."""
     with h5py.File(path, "r") as f:
         assert f.attrs["pipeline_version"] == "v2"
-        cube = f["inputs/cube_ifu"]
         y_mass = f["labels/Y_int_mass"][:]
         y_light = f["labels/Y_int_light"][:]
         m_valid = f["masks/M_valid"][:]
         tgt = f["metadata"].attrs["padded_grid"]
-        assert cube.shape[1] == tgt[0] and cube.shape[2] == tgt[1], cube.shape
+        if "inputs/cube_ifu" in f:   # solo si el cubo va embebido (copy_cube)
+            cube = f["inputs/cube_ifu"]
+            assert cube.shape[1] == tgt[0] and cube.shape[2] == tgt[1], cube.shape
         assert y_mass.shape == (tgt[0], tgt[1], len(CLASS_NAMES)), y_mass.shape
         assert not np.isnan(y_mass).any() and not np.isnan(y_light).any()
         sums = y_mass.sum(axis=-1)
