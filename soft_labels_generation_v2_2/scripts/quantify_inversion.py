@@ -7,13 +7,14 @@
 #   - flag inversion: dominante nuclear == disk Y fraccion de bulge en
 #     0.2-0.6 R_m mayor que en el nucleo (anillo de bulbo alrededor)
 import csv
+import os as _os
 from pathlib import Path
 
 import h5py
 import numpy as np
 
-V22 = Path("/media/andy/Data/tng/mangia_flat/output/dataset_entries")
-OUT = Path("/media/andy/Data/tng/mangia_flat/output/inversion_bulge_disk.csv")
+V22 = Path(_os.environ.get("GALSTRUCT_ENTRIES", "/media/andy/Data/tng/mangia_flat/output/dataset_entries"))
+OUT = V22.parent / "inversion_bulge_disk.csv"
 CLASSES = ["bulge", "disk", "bar", "arm", "halo"]
 
 rows = []

@@ -303,3 +303,40 @@ del fix bulbo/disco. Opciones: (a) excluir las 2 del entrenamiento
 supervisado, (b) marcarlas con `qa_status=merger` y bajar su peso, (c)
 aceptar el ruido (2% de la muestra). Recomendacion: marcar y decidir al
 escalar (a 10k la fraccion de fusiones sera similar, ~2%, ~200 galaxias).
+
+## 12. Patron "pajarita": proyeccion de sistemas no-disco-fino-de-cara
+
+Inspeccion de TNG50-87-323359 (reportada como "bulbo-disco-bulbo"): NO es un
+anillo concentrico ni el bug de inversion (branch permutation_v2.2,
+flag_inversion=False), sino un patron en X/pajarita con probabilidades
+CONFIADAS (P(bulbo)=0.91 en las cuñas exteriores, P(disco)=0.94 en la banda).
+
+**Causa:** proyeccion pesada por masa de la pertenencia de componente 3D en
+un sistema que NO es un disco fino de cara. A nivel de particulas la
+estructura es correcta (bulbo central + disco caliente/grueso con ~30% de
+bulbo a todo radio); pero al proyectar, el bulbo redondo domina la columna
+del eje menor escorzado (disco inclinado) o esta intermezclado (sistema
+grueso caliente), produciendo bulbo confiado FUERA del centro. Es un limite
+conocido de proyectar membresia cinematica 3D a 2D (la descomposicion
+observacional usa brillo superficial Sersic+exponencial, sin este problema).
+
+**Barrido automatico** (`scripts/detect_bowtie.py`, `output/bowtie_sweep.csv`,
+`output/bowtie_flagged.txt`): 3/92 galaxias (3%), dos sub-mecanismos:
+
+| Galaxia | azim | axis_ratio | cold_disk | thick | sub-tipo |
+|---|---|---|---|---|---|
+| TNG50-87-323359 | 0.44 | 0.67 | 0.43 | 0.47 | inclinado grueso |
+| TNG50-88-382174 | 0.42 | ~1 | 0.01 | 0.48 | grueso muy caliente |
+| TNG50-88-449304 | 0.32 | 0.31 | 0.52 | 0.21 | disco fino de canto |
+
+Criterio unificado: contraste azimutal de bulbo en anillo exterior > 0.30 con
+bulbo Y disco confiados presentes (excluye elipticas puras -solo bulbo- y
+discos de cara -solo disco-). Controles limpios (312423, 340908, 464534):
+azim=0.0.
+
+**Verdict:** las etiquetas 3D son correctas; el mapa 2D esta dominado por
+geometria de proyeccion, no por el bug. NO requiere fix del clasificador.
+Refuerza el uso de etiquetas BLANDAS + incertidumbre en el modelo (un espaxel
+que es mezcla proyectada debe llevar esa mezcla como probabilidad). Opciones:
+marcar con qa_status para bajar peso, o aceptar (3% de la muestra). A escala
+(10k) la fraccion sera similar; el detector queda integrable en el QA.

@@ -135,6 +135,15 @@ compañera se absorbe como brazo/disco porque el esquema de 5 clases no tiene
 categoría merger. Es una limitación del esquema, no del fix. Script:
 `scripts/detect_mergers.py` → `output/merger_sweep.csv`.
 
+### 3.4 Patrón "pajarita" en sistemas inclinados/gruesos (2ª limitación honesta)
+
+Barrido `detect_bowtie.py`: **3/92 galaxias (3%)** donde la proyección de la
+membresía de componente 3D produce bulbo confiado FUERA del centro (disco
+inclinado/de-canto o sistema grueso caliente). Las etiquetas 3D son
+correctas; el mapa 2D está dominado por geometría de proyección. Es un límite
+conocido de proyectar membresía cinemática (vs. brillo superficial). Refuerza
+la elección de etiquetas blandas + incertidumbre. Detalle: `investigacion §12`.
+
 ## 4. Figuras a regenerar / añadir en el artículo
 
 1. **Fig. inversión (mecanismo):** perfiles de ε(radio) y fracción de clase

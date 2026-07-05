@@ -32,6 +32,7 @@ del método de forma independiente.
 | Galaxias sin ningún cambio | 69/94 | inv. §7 |
 | Fidelidad octree vs potencial TNG | ρ(ε)=0.987, acuerdo etiquetas 97.5% | inv. §10 |
 | Sistemas en fusión (limitación) | 2/93 (2%) | inv. §11 |
+| Patrón pajarita / proyección inclinada (limitación) | 3/92 (3%) | inv. §12 |
 | MaNGIA en snapshots sin Potential | 97.8% | inv. §9 |
 | Memoria octree (galaxia mayor, 102M fuentes) | ~23 GB pico (168 B/fuente) | inv. §8 |
 
@@ -45,6 +46,7 @@ del método de forma independiente.
 | `report_pre_post.py` | mosaico visual pre/post de las corregidas | `output/comparacion_pre_post_fix.pdf` |
 | `compare_octree_vs_tng.py` | valida octree contra Potential de TNG (snap 91) | consola (ρ=0.987) |
 | `detect_mergers.py` | barrido de sistemas en fusión | `output/merger_sweep.csv`, `merger_flagged.txt` |
+| `detect_bowtie.py` | barrido de patrón pajarita (proyección inclinada) | `output/bowtie_sweep.csv`, `bowtie_flagged.txt` |
 | `render_inspection.py` | paneles de inspección visual por galaxia | `reports/inspeccion_visual/*.png` |
 
 ## Artefactos de datos

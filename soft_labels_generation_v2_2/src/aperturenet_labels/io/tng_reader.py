@@ -114,6 +114,13 @@ def load_cutout_truth(
         if "Potential" in stars:
             stellar_potential = np.asarray(stars["Potential"], dtype=np.float64)[valid]
 
+        # DM del CUTOUT PRINCIPAL si viene incluido (cutouts "completos");
+        # si no, se intenta desde phase2 más abajo (compatibilidad server).
+        dm_from_main = None
+        if "PartType1" in handle:
+            dm_from_main = np.asarray(handle["PartType1"]["Coordinates"],
+                                      dtype=np.float64)
+
         star_ids = (
             np.asarray(stars["ParticleIDs"], dtype=np.uint64)[valid]
             if "ParticleIDs" in stars
@@ -135,12 +142,25 @@ def load_cutout_truth(
             else None,
         )
 
-    if phase2_path is not None and Path(phase2_path).exists():
+    # prioridad para el DM: (1) cutout principal, (2) phase2. La materia
+    # oscura domina el potencial (~85% de la masa); sin ella, epsilon sale
+    # sesgado. Se registra un aviso si no aparece por ninguna vía.
+    dm_pos = dm_from_main
+    if dm_pos is None and phase2_path is not None and Path(phase2_path).exists():
         with h5py.File(phase2_path, "r") as handle:
             if "PartType1" in handle:
                 dm_pos = np.asarray(handle["PartType1"]["Coordinates"], dtype=np.float64)
-                truth_kwargs["dm_pos"] = dm_pos
-                truth_kwargs["dm_mass"] = np.full(len(dm_pos), DM_MASS_CODE_UNITS)
+    if dm_pos is not None:
+        truth_kwargs["dm_pos"] = dm_pos
+        truth_kwargs["dm_mass"] = np.full(len(dm_pos), DM_MASS_CODE_UNITS)
+    else:
+        import warnings
+        warnings.warn(
+            f"{Path(cutout_path).name}: SIN materia oscura (ni PartType1 en el "
+            f"cutout ni phase2). El potencial del octree excluirá el halo DM "
+            f"(~85% de la masa) y epsilon saldrá sesgado. Descarga phase2 "
+            f"(scripts/download_tng_inputs.py) para un potencial correcto.",
+            stacklevel=2)
 
     if potential_path is not None and Path(potential_path).exists():
         truth_kwargs["stellar_potential"] = _match_potential(

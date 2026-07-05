@@ -1,0 +1,9 @@
+
+# credenciales (nunca commitear la key real)
+aux/.env
+.env
+# salidas del batch
+labels_out/
+*/batch_progress.jsonl
+*/batch_summary.json
+inventory.csv

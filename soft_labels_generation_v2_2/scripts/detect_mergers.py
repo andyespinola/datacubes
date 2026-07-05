@@ -13,10 +13,11 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+import os as _os
 from scipy.ndimage import gaussian_filter, maximum_filter
 
-ENT = Path("/media/andy/Data/tng/mangia_flat/output/dataset_entries")
-OUT = Path("/media/andy/Data/tng/mangia_flat/output/merger_sweep.csv")
+ENT = Path(_os.environ.get("GALSTRUCT_ENTRIES", "/media/andy/Data/tng/mangia_flat/output/dataset_entries"))
+OUT = ENT.parent / "merger_sweep.csv"
 
 SEC_FRAC = 0.15      # secundario >= 15% del primario (masa lineal)
 MIN_SEP = 5          # px minimos entre nucleos
