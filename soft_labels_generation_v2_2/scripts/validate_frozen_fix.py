@@ -1,13 +1,29 @@
 """Validacion congelada del fix (chequeo de extension + espejo + gate hibrido
 s_min=2.5, calibrado SOLO con las 6 galaxias rechazadas de la oleada 1) sobre
-el set ampliado: 94 galaxias procesadas de oleada 1+2 mas los 2 pilotos.
+un conjunto arbitrario de galaxias ya procesadas por el pipeline v2.
 
 Ningun parametro se reajusta aqui -- es la prueba de generalizacion.
-Reporta solo metricas agregadas.
+Reporta solo metricas agregadas + detalle de las rechazadas.
+
+Asume la convencion de layout del propio pipeline (la que usa
+aperturenet_labels.cli.main): para cada "--data-dir BASE" tiene que existir
+  BASE/output/dataset_entries/*_v0.h5
+  BASE/intermediate/phase_a/{galaxy_id}/particle_features.h5
+  BASE/intermediate/phase_a/{galaxy_id}/particle_labels_initial.h5
+  BASE/{galaxy_id}-0-127.cube.fits.gz
+
+Uso (ejemplo en el equipo remoto):
+    python scripts/validate_frozen_fix.py \
+        --data-dir /mnt/nuevo/labels_out \
+        --mordor /ruta/a/morphs_kinematic_bars.hdf5 \
+        --output-json /mnt/nuevo/labels_out/frozen_validation_result.json
+
+Se puede pasar --data-dir mas de una vez si las galaxias estan repartidas
+en varias carpetas (ej. pilotos en un lado, oleadas en otro).
 """
 from __future__ import annotations
 
-import csv
+import argparse
 import json
 from pathlib import Path
 
@@ -21,15 +37,17 @@ from aperturenet_labels.phase_a.classifier import ClassifierConfig, build_featur
 from aperturenet_labels.phase_b import label_projection
 from aperturenet_labels.io import mangia_reader
 
-MANGIA_FLAT = Path("/media/andy/Data/tng/mangia_flat")
-PILOT_FLAT = Path("/home/andy/pythonProjects/datacubes/data")
-MORDOR = Path("/home/andy/pythonProjects/datacubes/data/morphs_kinematic_bars.hdf5")
-S_MIN = 2.5  # congelado de la calibracion anterior
+S_MIN = 2.5  # congelado de la calibracion anterior; NO tocar aca
+
+# se completan en main() a partir de los argumentos de linea de comandos
+DATA_DIRS: list[Path] = []
+MORDOR: Path | None = None
+TMP_DIR = Path("/tmp")
 
 
 def all_processed_galaxies() -> list[str]:
     gals = set()
-    for base in (MANGIA_FLAT, PILOT_FLAT):
+    for base in DATA_DIRS:
         entries_dir = base / "output" / "dataset_entries"
         if entries_dir.exists():
             for p in entries_dir.glob("*_v0.h5"):
@@ -38,12 +56,18 @@ def all_processed_galaxies() -> list[str]:
 
 
 def inter_dir(gal: str) -> Path:
-    p = MANGIA_FLAT / "intermediate" / "phase_a" / gal
-    return p if p.exists() else PILOT_FLAT / "intermediate" / "phase_a" / gal
+    for base in DATA_DIRS:
+        p = base / "intermediate" / "phase_a" / gal
+        if p.exists():
+            return p
+    raise FileNotFoundError(f"No encontre intermediate/phase_a/{gal} en ninguno de {DATA_DIRS}")
 
 
 def flat_dir(gal: str) -> Path:
-    return MANGIA_FLAT if (MANGIA_FLAT / f"{gal}-0-127.cube.fits.gz").exists() else PILOT_FLAT
+    for base in DATA_DIRS:
+        if (base / f"{gal}-0-127.cube.fits.gz").exists():
+            return base
+    raise FileNotFoundError(f"No encontre {gal}-0-127.cube.fits.gz en ninguno de {DATA_DIRS}")
 
 
 def reconstruct_praw(feats, gmm_h5, config):
@@ -129,7 +153,7 @@ def project_fracs(feats, gal, cube_path, P_class3):
     view = mangia_reader.view_definition_from_cube(cube_path, 0, 1)
     P5 = np.zeros((len(P_class3), 5))
     P5[:, 0], P5[:, 1], P5[:, 4] = P_class3[:, 0], P_class3[:, 1], P_class3[:, 2]
-    out_path = Path(f"/tmp/claude_val_{gal}.npz")
+    out_path = TMP_DIR / f"claude_val_{gal}.npz"
     label_projection.run_label_projection(
         positions_centered=feats["pos_centered"].astype(np.float64),
         mass=feats["mass"].astype(np.float64),
@@ -172,7 +196,43 @@ def catalog_fracs(gal: str) -> dict:
     return {"bulge": priors.bulge_frac, "disk": priors.disk_frac, "halo": priors.other_frac}
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--data-dir", action="append", required=True,
+        help="Carpeta base del pipeline (contiene output/, intermediate/, y los .cube.fits.gz planos). "
+        "Repetible si las galaxias estan en mas de una carpeta.",
+    )
+    parser.add_argument(
+        "--mordor", required=True,
+        help="Ruta a morphs_kinematic_bars.hdf5 (catalogo MORDOR) en el equipo donde se corre esto.",
+    )
+    parser.add_argument(
+        "--output-json", default="",
+        help="Donde guardar el resultado. Default: <primer --data-dir>/frozen_validation_result.json",
+    )
+    parser.add_argument(
+        "--tmp-dir", default="/tmp",
+        help="Carpeta temporal para los npz intermedios de la reproyeccion (se borran solos).",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    global DATA_DIRS, MORDOR, TMP_DIR
+    args = parse_args()
+    DATA_DIRS = [Path(d) for d in args.data_dir]
+    MORDOR = Path(args.mordor)
+    TMP_DIR = Path(args.tmp_dir)
+    TMP_DIR.mkdir(parents=True, exist_ok=True)
+    output_json = Path(args.output_json) if args.output_json else DATA_DIRS[0] / "frozen_validation_result.json"
+
+    for d in DATA_DIRS:
+        if not d.exists():
+            raise SystemExit(f"--data-dir no existe: {d}")
+    if not MORDOR.exists():
+        raise SystemExit(f"--mordor no existe: {MORDOR}")
+
     config = ClassifierConfig()
     gals = all_processed_galaxies()
     print(f"Total galaxias con dataset_entry: {len(gals)}", flush=True)
@@ -183,20 +243,29 @@ def main() -> None:
     n_inv_before = n_inv_after = 0
     detail_rejected = []
 
+    n_skipped = 0
     for i, gal in enumerate(gals, 1):
-        idir = inter_dir(gal)
-        feats_path = idir / "particle_features.h5"
-        gmm_path = idir / "particle_labels_initial.h5"
-        if not feats_path.exists() or not gmm_path.exists():
+        try:
+            idir = inter_dir(gal)
+            feats_path = idir / "particle_features.h5"
+            gmm_path = idir / "particle_labels_initial.h5"
+            if not feats_path.exists() or not gmm_path.exists():
+                print(f"[{i}/{len(gals)}] {gal}: SALTEADA (faltan intermedios de Fase A)", flush=True)
+                n_skipped += 1
+                continue
+            fdir = flat_dir(gal)
+            cube_path = fdir / f"{gal}-0-127.cube.fits.gz"
+        except FileNotFoundError as exc:
+            print(f"[{i}/{len(gals)}] {gal}: SALTEADA ({exc})", flush=True)
+            n_skipped += 1
             continue
+
         feats = extractor.load_particle_features(feats_path)
         cat = catalog_fracs(gal)
 
         P_raw, mo, stored = reconstruct_praw(feats, gmm_path, config)
         P_old, is_inv = reorder_old(P_raw, mo)
 
-        fdir = flat_dir(gal)
-        cube_path = fdir / f"{gal}-0-127.cube.fits.gz"
         r_old = project_fracs(feats, gal + "_o", cube_path, P_old)
         err_old = (abs(r_old["frac_bulge"] - cat["bulge"]) + abs(r_old["frac_disk"] - cat["disk"]) + abs(r_old["frac_halo"] - cat["halo"])) / 3
         errs_old_all.append(err_old)
@@ -225,7 +294,7 @@ def main() -> None:
         print(f"[{i}/{len(gals)}] {gal}: rechazada={hybrid is not None}", flush=True)
 
     print("\n=== RESUMEN AGREGADO (validacion congelada, sin recalibrar) ===")
-    print(f"Total galaxias evaluadas: {len(errs_old_all)}")
+    print(f"Total galaxias evaluadas: {len(errs_old_all)}  (salteadas por datos faltantes: {n_skipped})")
     print(f"Rechazadas por chequeo de extension (candidatas al fix): {n_rejected} ({100*n_rejected/len(errs_old_all):.0f}%)")
     print(f"Invertidas ANTES: {n_inv_before}   DESPUES: {n_inv_after}")
     print(f"\nError medio 3-familias, TODAS las galaxias:")
@@ -246,15 +315,15 @@ def main() -> None:
     print(f"\nRegresiones en galaxias NO rechazadas (deberia ser 0): {n_regresion}")
 
     out = {
-        "n_total": len(errs_old_all), "n_rejected": n_rejected,
+        "n_total": len(errs_old_all), "n_skipped": n_skipped, "n_rejected": n_rejected,
         "n_inv_before": n_inv_before, "n_inv_after": n_inv_after,
         "mean_err_old_all": float(np.mean(errs_old_all)), "mean_err_new_all": float(np.mean(errs_new_all)),
         "mean_err_old_rejected": float(np.mean(errs_old_rej)) if n_rejected else None,
         "mean_err_new_rejected": float(np.mean(errs_new_rej)) if n_rejected else None,
         "detail_rejected": detail_rejected,
     }
-    Path("/media/andy/Data/tng/mangia_flat/frozen_validation_result.json").write_text(json.dumps(out, indent=2, default=float))
-    print("\nGuardado: /media/andy/Data/tng/mangia_flat/frozen_validation_result.json")
+    output_json.write_text(json.dumps(out, indent=2, default=float))
+    print(f"\nGuardado: {output_json}")
 
 
 if __name__ == "__main__":
